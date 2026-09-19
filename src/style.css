@@ -5,7 +5,7 @@
   background: #080808;
   font-synthesis: none;
   font-weight: 400;
-  --muted: #8d8c89;
+  --muted: #a09d98;
   --line: #292827;
   --accent: #ffc99b;
   color-scheme: dark;
@@ -15,6 +15,8 @@
 }
 body {
   margin: 0;
+  min-width: 320px;
+  background: #080808;
 }
 button,
 input,
@@ -115,6 +117,10 @@ p {
   color: #aaa8a4;
   padding: 8px;
 }
+.topbar nav button[aria-pressed="true"] {
+  color: var(--accent);
+  background: #1d1712;
+}
 .topbar nav .import-nav {
   border-color: #393530;
   color: #e9e7e3;
@@ -190,7 +196,7 @@ main {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: #777571;
+  color: #8f8c87;
   font-size: 11px;
   margin-top: 12px;
 }
@@ -215,7 +221,7 @@ main {
   margin-bottom: 36px;
 }
 .hero-title p {
-  color: #87847e;
+  color: #9b9791;
   font-size: 12px;
   letter-spacing: 0.3px;
   margin-bottom: 12px;
@@ -271,7 +277,7 @@ main {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #777571;
+  color: #918d87;
   font-size: 12px;
   z-index: 1;
 }
@@ -283,6 +289,9 @@ main {
 }
 .status-dot.muted {
   background: #6c6258;
+}
+.status-dot.loading {
+  background: var(--accent);
 }
 .library-status button {
   margin-left: 5px;
@@ -311,6 +320,19 @@ main {
 }
 .connection {
   justify-content: center;
+  width: max-content;
+  max-width: calc(100% - 40px);
+  padding: 9px 13px;
+  color: #d9b797;
+  background: #18130f;
+}
+.connection-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgb(255 201 155 / 10%);
 }
 .icon {
   padding: 7px;
@@ -494,7 +516,7 @@ mark {
   align-items: center;
   justify-content: space-between;
   padding: 28px 5%;
-  color: #65615b;
+  color: #928e87;
   font-size: 11px;
 }
 .site-footer > div {
@@ -756,10 +778,12 @@ code {
     padding: 0 20px;
   }
   .topbar nav {
-    gap: 7px;
+    gap: 4px;
   }
   .topbar nav button {
     padding: 8px;
+    min-width: 36px;
+    min-height: 36px;
   }
   .topbar nav button span {
     display: none;
@@ -861,6 +885,9 @@ code {
     margin-left: 20px;
     margin-right: 20px;
   }
+  .connection {
+    margin-top: 8px;
+  }
   .modal-inner {
     padding: 22px;
   }
@@ -885,5 +912,14 @@ code {
   }
   .orbit > button:hover {
     transform: translate(-50%, -50%) scale(1.1);
+  }
+  .status-dot.loading,
+  .connection-dot {
+    animation: status-pulse 1.8s ease-in-out infinite;
+  }
+}
+@keyframes status-pulse {
+  50% {
+    opacity: 0.45;
   }
 }
