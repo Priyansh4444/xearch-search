@@ -26,7 +26,7 @@ async function healthy() {
   }
 }
 console.log(
-  "Production download worker started. Connections are outbound only; raw posts stay on this Mac.",
+  "Production download worker started. Connections are outbound only; raw posts stay on this machine.",
 );
 // `stopping` is flipped by the SIGINT/SIGTERM handlers above; the break keeps
 // the shutdown check explicit without a loop condition the linter must track.

@@ -58,7 +58,7 @@ export const claimNext = internalMutation({
       status: "running",
       attempt,
       pageAttempt: (job.pageAttempt ?? 0) + 1,
-      phase: "Starting download on your Mac",
+      phase: "Starting download",
       updatedAt: Date.now(),
       error: undefined,
     });

@@ -216,9 +216,7 @@ export default function Dashboard({
               [
                 ["x.md", config?.xmd],
                 [
-                  config?.collectorMode === "outbound"
-                    ? "Mac download worker"
-                    : "Local file saving",
+                  config?.collectorMode === "outbound" ? "Download worker" : "Local file saving",
                   config?.handoff,
                 ],
                 ["Search backend", config?.search],
