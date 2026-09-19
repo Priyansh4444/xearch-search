@@ -52,8 +52,7 @@ custom public HTTPS. Moving a worker does not move Convex.
 
 Preserve existing `.env*` files, tokens, captures, and database backups. Never
 print or commit secrets or private data. Keep service logs private. Read
-`docs/production.md` and `docs/vm-migration.md` before changing service setup;
-consult `TRANSFER.md` for archive provenance, not current runtime status.
+`docs/production.md` before changing service setup.
 
 ## Verification and Git
 
