@@ -1,0 +1,22 @@
+[package]
+name = "search-tantivy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[lints]
+workspace = true
+[dependencies]
+search-model.workspace = true
+search-query.workspace = true
+search-ranking.workspace = true
+search-backend.workspace = true
+tantivy.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+sha2.workspace = true
+[dev-dependencies]
+tempfile.workspace = true
+criterion = { version = "0.8", default-features = false }
+[[bench]]
+name = "search"
+harness = false
