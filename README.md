@@ -58,21 +58,21 @@ Run the auth-key script once per new local deployment. It generates backend sign
 
 Use `bunx convex env set NAME` and supply the value through stdin/the prompt. Do not use `VITE_` variables for secrets.
 
-| Variable | Purpose |
-| --- | --- |
-| `X_MD_API_KEY` | x.md acquisition credential |
-| `X_MD_BASE_URL` | Optional alternate official origin, `https://x.pcstyle.dev` |
-| `RAW_CAPTURE_URL` | Friend's durable raw-capture receiver |
-| `SEARCH_API_URL` | Friend's retrieval endpoint |
-| `SEARCH_SERVICE_TOKEN` | Read-only credential for the search endpoint |
-| `RAW_CAPTURE_TOKEN` | Ingestion-only credential for the capture receiver |
-| `DATA_SERVICE_TOKEN` | Legacy shared fallback when a dedicated token is unset |
-| `FIRECRAWL_API_KEY` | Linked-page scraping and web-context search |
-| `OPENAI_API_KEY` | Editable query interpretation |
-| `OPENAI_MODEL` | Optional model override; default `gpt-5-mini` |
-| `AGENTMAIL_API_KEY` | Result-digest delivery |
-| `AGENTMAIL_INBOX_ID` | Existing sender inbox |
-| `AGENTMAIL_WEBHOOK_SECRET` | Verification of delivery webhooks |
+| Variable                   | Purpose                                                     |
+| -------------------------- | ----------------------------------------------------------- |
+| `X_MD_API_KEY`             | x.md acquisition credential                                 |
+| `X_MD_BASE_URL`            | Optional alternate official origin, `https://x.pcstyle.dev` |
+| `RAW_CAPTURE_URL`          | Friend's durable raw-capture receiver                       |
+| `SEARCH_API_URL`           | Friend's retrieval endpoint                                 |
+| `SEARCH_SERVICE_TOKEN`     | Read-only credential for the search endpoint                |
+| `RAW_CAPTURE_TOKEN`        | Ingestion-only credential for the capture receiver          |
+| `DATA_SERVICE_TOKEN`       | Legacy shared fallback when a dedicated token is unset      |
+| `FIRECRAWL_API_KEY`        | Linked-page scraping and web-context search                 |
+| `OPENAI_API_KEY`           | Editable query interpretation                               |
+| `OPENAI_MODEL`             | Optional model override; default `gpt-5-mini`               |
+| `AGENTMAIL_API_KEY`        | Result-digest delivery                                      |
+| `AGENTMAIL_INBOX_ID`       | Existing sender inbox                                       |
+| `AGENTMAIL_WEBHOOK_SECRET` | Verification of delivery webhooks                           |
 
 Register AgentMail's webhook at `<deployment>.convex.site/agentmail/webhook` for delivery events. A send is queued only by the explicit Email → Send results action. The interface distinguishes queued/sent/delivered states.
 

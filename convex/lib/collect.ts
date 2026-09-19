@@ -1,23 +1,10 @@
-import {
-  XmdClient,
-  ProviderError,
-  record,
-  string,
-  type RawObject,
-} from "./xmd";
+import { XmdClient, ProviderError, record, string, type RawObject } from "./xmd";
 import type { Capture, Receipt } from "./handoff";
 
 export type CollectionRequest = {
   runId: string;
   attempt: number;
-  kind:
-    | "bulk"
-    | "live"
-    | "post"
-    | "profile"
-    | "following"
-    | "followers"
-    | "archive";
+  kind: "bulk" | "live" | "post" | "profile" | "following" | "followers" | "archive";
   input: string;
   since?: string;
   until?: string;
@@ -79,8 +66,7 @@ export async function collectXmd(
         "oversized_record",
         "A provider record is too large for this handoff. It was not shortened or normalized.",
       );
-    if (pending.length && (pending.length >= 25 || bytes + size > 3_000_000))
-      await flush("more");
+    if (pending.length && (pending.length >= 25 || bytes + size > 3_000_000)) await flush("more");
     pending.push({ receivedAt: now(), payload });
     bytes += size;
   };
@@ -121,11 +107,7 @@ export async function collectXmd(
         const response = await client.history(request.input, options);
         // Preserve the complete provider envelope, including future fields.
         await add(response);
-        if (
-          !Array.isArray(response.posts) ||
-          !response.meta ||
-          !response.profile
-        )
+        if (!Array.isArray(response.posts) || !response.meta || !response.profile)
           throw new ProviderError(
             "invalid_history",
             "x.md history is missing posts, profile, or its completion summary.",
@@ -133,10 +115,7 @@ export async function collectXmd(
         metadata = record(response.meta);
         postsReceived = response.posts.length;
         if (response.posts.length > options.maxPosts)
-          throw new ProviderError(
-            "import_limit",
-            "x.md exceeded the requested history size.",
-          );
+          throw new ProviderError("import_limit", "x.md exceeded the requested history size.");
         if (string(record(response.profile).id) !== expectedUserId)
           throw new ProviderError(
             "identity_mismatch",
@@ -152,9 +131,7 @@ export async function collectXmd(
       // A terminal provider record is accepted only after a clean stream EOF.
       if (terminal) {
         await add(terminal);
-        const finalProfile = terminal.profile
-          ? record(terminal.profile)
-          : undefined;
+        const finalProfile = terminal.profile ? record(terminal.profile) : undefined;
         if (finalProfile && string(finalProfile.id) !== expectedUserId)
           throw new ProviderError(
             "identity_mismatch",
@@ -196,9 +173,7 @@ export async function collectXmd(
       warnings,
       expectedUserId,
       nextUntil:
-        request.kind === "bulk" &&
-        request.format !== "ndjson" &&
-        metadata.truncated
+        request.kind === "bulk" && request.format !== "ndjson" && metadata.truncated
           ? string(metadata.oldest)
           : undefined,
       nextCursor: string(metadata.nextCursor),
@@ -208,8 +183,7 @@ export async function collectXmd(
       floorReached: metadata.floor_reached === true,
     };
   } catch (error) {
-    if (error instanceof ProviderError && error.raw)
-      await add(error.raw).catch(() => {});
+    if (error instanceof ProviderError && error.raw) await add(error.raw).catch(() => {});
     // Best effort preserves observed raw data. A failed handoff never gets an ack.
     await flush("partial").catch(() => {});
     throw error;

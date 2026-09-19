@@ -18,10 +18,8 @@ export function captureServer({ directory, token }) {
     };
     if (req.method === "GET" && req.url === "/health")
       return reply(200, { status: "ready", mode: "temporary-raw-capture" });
-    if (req.method !== "POST" || req.url !== "/captures")
-      return reply(404, { error: "not_found" });
-    if (!authorized(req.headers.authorization))
-      return reply(401, { error: "unauthorized" });
+    if (req.method !== "POST" || req.url !== "/captures") return reply(404, { error: "not_found" });
+    if (!authorized(req.headers.authorization)) return reply(401, { error: "unauthorized" });
     let temporary;
     try {
       const chunks = [];
@@ -36,8 +34,7 @@ export function captureServer({ directory, token }) {
       }
       const body = Buffer.concat(chunks);
       const id = createHash("sha256").update(body).digest("hex");
-      if (req.headers["idempotency-key"] !== id)
-        return reply(400, { error: "checksum_mismatch" });
+      if (req.headers["idempotency-key"] !== id) return reply(400, { error: "checksum_mismatch" });
       let capture;
       try {
         capture = JSON.parse(body.toString("utf8"));
@@ -78,19 +75,12 @@ export function captureServer({ directory, token }) {
   });
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const directory = resolve(".local-captures/raw");
-  const token = (
-    await readFile(resolve(".local-captures/token"), "utf8")
-  ).trim();
+  const token = (await readFile(resolve(".local-captures/token"), "utf8")).trim();
   const server = captureServer({ directory, token });
   server.requestTimeout = 30_000;
   server.listen(4319, "127.0.0.1", () =>
-    console.log(
-      "Temporary capture receiver: http://127.0.0.1:4319 (loopback only)",
-    ),
+    console.log("Temporary capture receiver: http://127.0.0.1:4319 (loopback only)"),
   );
 }

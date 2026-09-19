@@ -25,7 +25,6 @@ for (const [name, value] of Object.entries(values)) {
     input: value,
     stdio: ["pipe", "pipe", "pipe"],
   });
-  if (run.status !== 0)
-    throw new Error(`Could not set ${name}; inspect deployment configuration.`);
+  if (run.status !== 0) throw new Error(`Could not set ${name}; inspect deployment configuration.`);
   console.log(`Configured ${name}; value not printed.`);
 }

@@ -36,7 +36,10 @@ Idempotency-Key: <sha256 of exact UTF-8 request body>
     "refresh": false
   },
   "records": [
-    { "receivedAt": 1789776000000, "payload": { "post": { "id": "123", "text": "Original provider object and all its fields" } } }
+    {
+      "receivedAt": 1789776000000,
+      "payload": { "post": { "id": "123", "text": "Original provider object and all its fields" } }
+    }
   ],
   "terminal": "more"
 }
@@ -49,7 +52,11 @@ For bulk collection the profile response is handed off first, then the account's
 Return only after durable retention:
 
 ```json
-{ "captureId": "same-sha256-as-idempotency-key", "durable": true, "receiptId": "receiver-owned-opaque-id" }
+{
+  "captureId": "same-sha256-as-idempotency-key",
+  "durable": true,
+  "receiptId": "receiver-owned-opaque-id"
+}
 ```
 
 The receiver must return the same successful receipt for an already accepted idempotency key. A lost HTTP response is retried once with identical bytes. A new acquisition attempt can produce new captures and overlapping post IDs: raw-retention idempotency is separate from downstream normalization/deduplication.
@@ -63,26 +70,35 @@ The receiver must return the same successful receipt for an already accepted ide
 Set `SEARCH_API_URL` to the exact retrieval endpoint and `SEARCH_SERVICE_TOKEN` to its read-only bearer credential. Retrieval and ranking live entirely on that side.
 
 ```json
-{ "version": 1, "query": "local first", "author": "theo", "sort": "relevance", "limit": 20, "cursor": "optional-opaque-cursor" }
+{
+  "version": 1,
+  "query": "local first",
+  "author": "theo",
+  "sort": "relevance",
+  "limit": 20,
+  "cursor": "optional-opaque-cursor"
+}
 ```
 
 Sort values: `relevance`, `engagement`, `likes`, `newest`, `oldest`. Omitted author means all indexed accounts. The provider owns the cursor and its relationship to query and sort.
 
 ```json
 {
-  "rows": [{
-    "tweetId": "123",
-    "author": "theo",
-    "text": "A display excerpt, up to 6000 characters",
-    "url": "https://x.com/theo/status/123",
-    "createdAt": 1789776000000,
-    "likes": 12,
-    "reposts": 2,
-    "replies": 1,
-    "links": ["https://example.com/article"],
-    "displayName": "Theo",
-    "avatar": "https://example.com/avatar.jpg"
-  }],
+  "rows": [
+    {
+      "tweetId": "123",
+      "author": "theo",
+      "text": "A display excerpt, up to 6000 characters",
+      "url": "https://x.com/theo/status/123",
+      "createdAt": 1789776000000,
+      "likes": 12,
+      "reposts": 2,
+      "replies": 1,
+      "links": ["https://example.com/article"],
+      "displayName": "Theo",
+      "avatar": "https://example.com/avatar.jpg"
+    }
+  ],
   "nextCursor": "optional",
   "warnings": []
 }

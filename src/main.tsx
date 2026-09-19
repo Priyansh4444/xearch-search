@@ -33,8 +33,8 @@ createRoot(document.getElementById("root")!).render(
     <main className="setup">
       <h1>Xearch</h1>
       <p>
-        Start the backend with <code>bun run backend</code>, then restart the
-        frontend. The local setup creates VITE_CONVEX_URL automatically.
+        Start the backend with <code>bun run backend</code>, then restart the frontend. The local
+        setup creates VITE_CONVEX_URL automatically.
       </p>
     </main>
   ),

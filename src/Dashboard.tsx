@@ -1,10 +1,5 @@
 import { useState } from "react";
-import {
-  useConvexAuth,
-  useConvexConnectionState,
-  useMutation,
-  useQuery,
-} from "convex/react";
+import { useConvexAuth, useConvexConnectionState, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Doc } from "../convex/_generated/dataModel";
 import "./dashboard.css";
@@ -13,10 +8,7 @@ import { jobLabel, jobSummary, jobWarnings } from "./jobText";
 function Job({ job }: { job: Doc<"jobs"> }) {
   const [expanded, setExpanded] = useState(false),
     [error, setError] = useState("");
-  const receipts = useQuery(
-    api.jobs.receipts,
-    expanded ? { jobId: job._id } : "skip",
-  );
+  const receipts = useQuery(api.jobs.receipts, expanded ? { jobId: job._id } : "skip");
   const cancel = useMutation(api.jobs.cancel),
     retry = useMutation(api.jobs.retry),
     start = useMutation(api.jobs.start);
@@ -47,26 +39,18 @@ function Job({ job }: { job: Doc<"jobs"> }) {
       </p>
       <small>
         Updated {new Date(job.updatedAt).toLocaleString()}
-        {job.oldest
-          ? ` | Oldest post received: ${new Date(job.oldest).toLocaleDateString()}`
-          : ""}
+        {job.oldest ? ` | Oldest post received: ${new Date(job.oldest).toLocaleDateString()}` : ""}
       </small>
       {job.error && <p className="control-error">{job.error}</p>}
-      {jobWarnings(job).map((w, i) => (
-        <p className="control-warning" key={i}>
+      {jobWarnings(job).map((w) => (
+        <p className="control-warning" key={w}>
           {w}
         </p>
       ))}
       <div className="control-actions">
-        {active && (
-          <button onClick={() => act(() => cancel({ jobId: job._id }))}>
-            Stop job
-          </button>
-        )}
+        {active && <button onClick={() => act(() => cancel({ jobId: job._id }))}>Stop job</button>}
         {["failed", "partial", "cancelled"].includes(job.status) && (
-          <button onClick={() => act(() => retry({ jobId: job._id }))}>
-            Retry download
-          </button>
+          <button onClick={() => act(() => retry({ jobId: job._id }))}>Retry download</button>
         )}
         {job.status === "complete" && (job.nextUntil || job.nextCursor) && (
           <button
@@ -81,9 +65,7 @@ function Job({ job }: { job: Doc<"jobs"> }) {
               )
             }
           >
-            {job.kind === "bulk"
-              ? "Continue remaining history"
-              : "Download next page"}
+            {job.kind === "bulk" ? "Continue remaining history" : "Download next page"}
           </button>
         )}
         <button aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
@@ -159,13 +141,9 @@ export default function Dashboard({
                   since: kind === "bulk" && since ? since : undefined,
                   refresh: kind === "bulk" && refresh,
                 });
-                setMessage(
-                  "Import started. You can leave this page open or come back later.",
-                );
+                setMessage("Import started. You can leave this page open or come back later.");
               } catch (e) {
-                setMessage(
-                  e instanceof Error ? e.message : "Could not start job.",
-                );
+                setMessage(e instanceof Error ? e.message : "Could not start job.");
               } finally {
                 setBusy(false);
               }
@@ -174,10 +152,7 @@ export default function Dashboard({
             <h2>Start an import</h2>
             <label>
               What to download
-              <select
-                value={kind}
-                onChange={(e) => setKind(e.target.value as typeof kind)}
-              >
+              <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
                 <option value="bulk">Account history</option>
                 <option value="profile">Profile</option>
                 <option value="post">Post / conversation</option>
@@ -188,11 +163,7 @@ export default function Dashboard({
               </select>
             </label>
             <label>
-              {kind === "post"
-                ? "X post URL"
-                : kind === "live"
-                  ? "Search query"
-                  : "Account handle"}
+              {kind === "post" ? "X post URL" : kind === "live" ? "Search query" : "Account handle"}
               <input
                 required
                 value={input}
@@ -210,11 +181,7 @@ export default function Dashboard({
               <>
                 <label>
                   History since (optional)
-                  <input
-                    type="date"
-                    value={since}
-                    onChange={(e) => setSince(e.target.value)}
-                  />
+                  <input type="date" value={since} onChange={(e) => setSince(e.target.value)} />
                 </label>
                 <label className="control-check">
                   <input
@@ -225,16 +192,12 @@ export default function Dashboard({
                   Fetch fresh data instead of using x.md's cache
                 </label>
                 <p>
-                  Older batches download automatically. If x.md runs out of
-                  history or a usage limit is reached, we'll show why the import
-                  stopped.
+                  Older batches download automatically. If x.md runs out of history or a usage limit
+                  is reached, we'll show why the import stopped.
                 </p>
               </>
             )}
-            <button
-              className="control-start"
-              disabled={busy || !config?.indexing}
-            >
+            <button className="control-start" disabled={busy || !config?.indexing}>
               {busy
                 ? "Starting..."
                 : kind === "bulk"
@@ -272,17 +235,14 @@ export default function Dashboard({
                 <span>{ready ? "Configured" : "Not connected"}</span>
               </div>
             ))}
-            <p>
-              Configuration status, not a live health check. Provider keys stay
-              on the backend.
-            </p>
+            <p>Configuration status, not a live health check. Provider keys stay on the backend.</p>
           </section>
         </aside>
         <section className="control-feed" aria-label="Import activity">
           <h2>Your imports</h2>
           <p>
-            Updates appear as each batch is saved. Counts can include repeated
-            posts at batch boundaries. Downloads aren't searchable yet.
+            Updates appear as each batch is saved. Counts can include repeated posts at batch
+            boundaries. Downloads aren't searchable yet.
           </p>
           {!isAuthenticated ? (
             <button
@@ -302,8 +262,7 @@ export default function Dashboard({
             <div className="control-empty">
               <h3>No collections yet</h3>
               <p>
-                Start with a profile read to check the connection, then import
-                an account’s history.
+                Start with a profile read to check the connection, then import an account’s history.
               </p>
             </div>
           ) : (

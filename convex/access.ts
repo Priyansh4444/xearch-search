@@ -14,9 +14,7 @@ export async function budget(ctx: MutationCtx, key: string, maximum: number) {
     .withIndex("by_key", (q) => q.eq("key", id))
     .unique();
   if ((row?.count ?? 0) >= maximum)
-    throw new ConvexError(
-      "Today's usage limit is reached. Try again tomorrow.",
-    );
+    throw new ConvexError("Today's usage limit is reached. Try again tomorrow.");
   if (row) await ctx.db.patch(row._id, { count: row.count + 1 });
   else await ctx.db.insert("budgets", { key: id, count: 1 });
 }

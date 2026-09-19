@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -58,6 +57,12 @@ const compact = (n: number) =>
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(n);
+const describeError = (e: unknown) =>
+  e instanceof ConvexError
+    ? String(e.data)
+    : e instanceof Error
+      ? e.message.replace(/\[CONVEX[^]*?Uncaught (?:Error|ConvexError):\s*/, "").split("\n")[0]
+      : "Something went wrong. Try again.";
 function Avatar({ name, url }: { name: string; url?: string }) {
   const [failed, setFailed] = useState(false);
   return (
@@ -119,8 +124,27 @@ function Highlight({ text, query }: { text: string; query: string }) {
     .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (!words.length) return <>{text}</>;
   const pattern = new RegExp(`(${words.join("|")})`, "gi");
+  const parts: { key: string; text: string; mark: boolean }[] = [];
+  let cursor = 0;
+  for (const match of text.matchAll(pattern)) {
+    const start = match.index ?? 0;
+    if (start > cursor)
+      parts.push({ key: `text-${cursor}`, text: text.slice(cursor, start), mark: false });
+    parts.push({ key: `mark-${start}`, text: match[0], mark: true });
+    cursor = start + match[0].length;
+  }
+  if (cursor < text.length)
+    parts.push({ key: `text-${cursor}`, text: text.slice(cursor), mark: false });
   return (
-    <>{text.split(pattern).map((piece, i) => (i % 2 ? <mark key={i}>{piece}</mark> : piece))}</>
+    <>
+      {parts.map((part) =>
+        part.mark ? (
+          <mark key={part.key}>{part.text}</mark>
+        ) : (
+          <span key={part.key}>{part.text}</span>
+        ),
+      )}
+    </>
   );
 }
 function PostCard({
@@ -228,7 +252,9 @@ export default function App() {
   const [draft, setDraft] = useState(initial.raw),
     [raw, setRaw] = useState(initial.raw),
     [sort, setSort] = useState<Sort>(initial.sort),
-    [searchRun, setSearchRun] = useState(0);
+    [searchRequest, setSearchRequest] = useState<{ raw: string; sort: Sort } | null>(() =>
+      initial.raw.trim() ? { raw: initial.raw, sort: initial.sort } : null,
+    );
   const [sessionId, setSessionId] = useState<Id<"sessions"> | null>(null);
   const [view, setView] = useState<"search" | "bookmarks">("search"),
     [modal, setModal] = useState<"imports" | "saved" | "email" | "setup" | null>(null);
@@ -266,7 +292,7 @@ export default function App() {
       for (const resolve of authWaiters.current.splice(0)) resolve();
     }
   }, [isAuthenticated]);
-  const ensureSession = useCallback(async () => {
+  const ensureSession = async () => {
     if (authReady.current) return;
     session.current ??= (async () => {
       await signIn("anonymous");
@@ -287,7 +313,7 @@ export default function App() {
       session.current = null;
     });
     await session.current;
-  }, [signIn]);
+  };
   const accounts = useQuery(api.search.accounts) ?? [];
   const configured = useQuery(api.integrations.configured);
   let queryError = "";
@@ -314,32 +340,24 @@ export default function App() {
   const webContext = useAction(api.integrations.webContext);
   const readLink = useAction(api.integrations.readLink),
     interpret = useAction(api.integrations.interpret);
-  const task = useCallback(async (fn: () => Promise<unknown>, success?: string) => {
+  const task = async (fn: () => Promise<unknown>, success?: string) => {
     setNotice("");
     setBusy(true);
     try {
       await fn();
       if (success) setNotice(success);
     } catch (e) {
-      setNotice(
-        e instanceof ConvexError
-          ? String(e.data)
-          : e instanceof Error
-            ? e.message
-                .replace(/\[CONVEX[^]*?Uncaught (?:Error|ConvexError):\s*/, "")
-                .split("\n")[0]
-            : "Something went wrong. Try again.",
-      );
+      setNotice(describeError(e));
     } finally {
       setBusy(false);
     }
-  }, []);
+  };
   const search = (query: string, nextSort: Sort = sort) => {
     setRaw(query.trim());
     setDraft(query.trim());
     setSort(nextSort);
     setSessionId(null);
-    setSearchRun((n) => n + 1);
+    setSearchRequest({ raw: query.trim(), sort: nextSort });
     setView("search");
     setProposal(null);
     const url = new URL(location.href);
@@ -355,26 +373,35 @@ export default function App() {
       setDraft(state.raw);
       setSort(state.sort);
       setSessionId(null);
-      setSearchRun((n) => n + 1);
+      setSearchRequest(state.raw.trim() ? { raw: state.raw, sort: state.sort } : null);
       setView("search");
     };
     addEventListener("popstate", pop);
     return () => removeEventListener("popstate", pop);
   }, []);
   useEffect(() => {
-    if (!raw.trim() || queryError || !configured?.search) return;
+    if (!searchRequest || queryError || !configured?.search) return;
+    const { raw: query, sort: requestedSort } = searchRequest;
     let active = true;
-    // This effect starts an external search; task owns its loading/error state.
-    // oxlint-disable-next-line react/set-state-in-effect
-    void task(async () => {
+    // Every setState here runs after an await, never synchronously in the effect body.
+    void (async () => {
       await ensureSession();
-      const id = await startSearch({ raw, sort });
-      if (active) setSessionId(id);
-    });
+      if (!active) return;
+      setBusy(true);
+      setNotice("");
+      try {
+        const id = await startSearch({ raw: query, sort: requestedSort });
+        if (active) setSessionId(id);
+      } catch (e) {
+        if (active) setNotice(describeError(e));
+      } finally {
+        if (active) setBusy(false);
+      }
+    })();
     return () => {
       active = false;
     };
-  }, [raw, sort, searchRun, configured?.search, queryError, ensureSession, startSearch, task]);
+  }, [searchRequest, configured?.search, queryError, ensureSession, startSearch]);
   const importAccount = (e: FormEvent) => {
     e.preventDefault();
     void task(async () => {
@@ -695,7 +722,7 @@ export default function App() {
               <div className="empty">
                 <h2>Search could not complete</h2>
                 <p>{result.error}</p>
-                <button onClick={() => setSearchRun((n) => n + 1)}>Retry search</button>
+                <button onClick={() => setSearchRequest({ raw, sort })}>Retry search</button>
               </div>
             ) : view === "search" && (!result || result.status !== "complete") ? (
               <div className="empty" role="status">
@@ -727,8 +754,8 @@ export default function App() {
                   Results and ordering come from your search service. Engagement reflects the source
                   snapshot.
                 </p>
-                {result?.warnings.map((warning, i) => (
-                  <p className="scope-note" key={i}>
+                {result?.warnings.map((warning) => (
+                  <p className="scope-note" key={warning}>
                     {warning}
                   </p>
                 ))}
@@ -845,8 +872,8 @@ export default function App() {
                 </div>
                 <p>{jobSummary(job)}</p>
                 {job.error && <p className="config-warning">{job.error}</p>}
-                {jobWarnings(job).map((w, i) => (
-                  <p className="muted-copy" key={i}>
+                {jobWarnings(job).map((w) => (
+                  <p className="muted-copy" key={w}>
                     {w}
                   </p>
                 ))}

@@ -1,9 +1,4 @@
-import {
-  action,
-  query,
-  internalMutation,
-  internalQuery,
-} from "./_generated/server";
+import { action, query, internalMutation, internalQuery } from "./_generated/server";
 import { internal, components } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { FirecrawlClient } from "@firecrawl/firecrawl-convex";
@@ -35,18 +30,13 @@ export const configured = query({
       collectorMode: outbound ? "outbound" : "receiver",
       firecrawl: !!process.env.FIRECRAWL_API_KEY,
       openai: !!process.env.OPENAI_API_KEY,
-      email:
-        !!process.env.AGENTMAIL_API_KEY && !!process.env.AGENTMAIL_INBOX_ID,
+      email: !!process.env.AGENTMAIL_API_KEY && !!process.env.AGENTMAIL_INBOX_ID,
     };
   },
 });
 export const reserve = internalMutation({
   args: {
-    service: v.union(
-      v.literal("firecrawl"),
-      v.literal("openai"),
-      v.literal("xmd"),
-    ),
+    service: v.union(v.literal("firecrawl"), v.literal("openai"), v.literal("xmd")),
   },
   handler: async (ctx, { service }) => {
     const owner = await user(ctx);
@@ -89,8 +79,7 @@ export const readLink = action({
     url: string;
     collectedAt: number;
   }> => {
-    if (!(await ctx.auth.getUserIdentity()))
-      throw new ConvexError("Start a session first.");
+    if (!(await ctx.auth.getUserIdentity())) throw new ConvexError("Start a session first.");
     const url = publicUrl(args.url);
     const cached = await ctx.runQuery(internal.integrations.page, { url });
     if (cached && Date.now() - cached.collectedAt < 86_400_000)
@@ -101,9 +90,7 @@ export const readLink = action({
         collectedAt: cached.collectedAt,
       };
     if (!process.env.FIRECRAWL_API_KEY)
-      throw new ConvexError(
-        "Add FIRECRAWL_API_KEY to enable linked-page reading.",
-      );
+      throw new ConvexError("Add FIRECRAWL_API_KEY to enable linked-page reading.");
     await ctx.runMutation(internal.integrations.reserve, {
       service: "firecrawl",
     });
@@ -113,30 +100,24 @@ export const readLink = action({
     });
     const collectedAt = Date.now();
     if (process.env.RAW_CAPTURE_URL)
-      await deliverCapture(
-        process.env.RAW_CAPTURE_URL,
-        serviceToken("capture"),
-        {
-          version: 1,
-          runId: crypto.randomUUID(),
-          attempt: 1,
-          sequence: 0,
-          source: "firecrawl",
-          request: {
-            origin: "https://api.firecrawl.dev",
-            resource: "scrape",
-            input: url,
-          },
-          records: [{ receivedAt: collectedAt, payload: record(response) }],
-          terminal: "complete",
+      await deliverCapture(process.env.RAW_CAPTURE_URL, serviceToken("capture"), {
+        version: 1,
+        runId: crypto.randomUUID(),
+        attempt: 1,
+        sequence: 0,
+        source: "firecrawl",
+        request: {
+          origin: "https://api.firecrawl.dev",
+          resource: "scrape",
+          input: url,
         },
-      );
+        records: [{ receivedAt: collectedAt, payload: record(response) }],
+        terminal: "complete",
+      });
     const data = record(response);
     const markdown = string(data.markdown);
     if (!markdown?.trim())
-      throw new ConvexError(
-        "This page returned no readable text. Open the original instead.",
-      );
+      throw new ConvexError("This page returned no readable text. Open the original instead.");
     const metadata = data.metadata ? record(data.metadata) : {};
     const result = {
       url,
@@ -158,9 +139,7 @@ export const webContext = action({
     if (!query.trim() || query.length > 300)
       throw new ConvexError("Enter a search under 300 characters.");
     if (!process.env.FIRECRAWL_API_KEY)
-      throw new ConvexError(
-        "Connect Firecrawl to search the web around this topic.",
-      );
+      throw new ConvexError("Connect Firecrawl to search the web around this topic.");
     await ctx.runMutation(internal.integrations.reserve, {
       service: "firecrawl",
     });
@@ -170,24 +149,20 @@ export const webContext = action({
     });
     const collectedAt = Date.now();
     if (process.env.RAW_CAPTURE_URL)
-      await deliverCapture(
-        process.env.RAW_CAPTURE_URL,
-        serviceToken("capture"),
-        {
-          version: 1,
-          runId: crypto.randomUUID(),
-          attempt: 1,
-          sequence: 0,
-          source: "firecrawl",
-          request: {
-            origin: "https://api.firecrawl.dev",
-            resource: "search",
-            input: query,
-          },
-          records: [{ receivedAt: collectedAt, payload: record(response) }],
-          terminal: "complete",
+      await deliverCapture(process.env.RAW_CAPTURE_URL, serviceToken("capture"), {
+        version: 1,
+        runId: crypto.randomUUID(),
+        attempt: 1,
+        sequence: 0,
+        source: "firecrawl",
+        request: {
+          origin: "https://api.firecrawl.dev",
+          resource: "search",
+          input: query,
         },
-      );
+        records: [{ receivedAt: collectedAt, payload: record(response) }],
+        terminal: "complete",
+      });
     return (response.web ?? []).slice(0, 5).flatMap((item) => {
       const data = record(item);
       const meta = data.metadata ? record(data.metadata) : {};
@@ -203,11 +178,7 @@ export const webContext = action({
         {
           url,
           collectedAt,
-          title: (
-            string(data.title) ??
-            string(meta.title) ??
-            new URL(url).hostname
-          ).slice(0, 200),
+          title: (string(data.title) ?? string(meta.title) ?? new URL(url).hostname).slice(0, 200),
           text: (
             string(data.markdown) ??
             string(data.description) ??
@@ -292,16 +263,12 @@ export const interpret = action({
       .join("");
     const result = interpreted.parse(JSON.parse(output));
     const proposed = parseQuery(result.text);
-    if (
-      proposed.author ||
-      (result.author && result.author.toLowerCase() !== explicit.author)
-    )
+    if (proposed.author || (result.author && result.author.toLowerCase() !== explicit.author))
       throw new ConvexError(
         "Query assistance proposed a different author. Your original search was kept.",
       );
     return {
-      query:
-        `${explicit.author ? `@${explicit.author} ` : ""}${result.text}`.trim(),
+      query: `${explicit.author ? `@${explicit.author} ` : ""}${result.text}`.trim(),
       explanation: result.explanation,
     };
   },

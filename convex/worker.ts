@@ -20,8 +20,7 @@ export const heartbeat = internalMutation({
       .unique();
     const lastSeen = Date.now();
     if (existing) await ctx.db.patch(existing._id, { online, lastSeen });
-    else
-      await ctx.db.insert("collector", { name: "desktop", online, lastSeen });
+    else await ctx.db.insert("collector", { name: "desktop", online, lastSeen });
     if (online)
       await ctx.scheduler.runAfter(45_000, internal.worker.expire, {
         lastSeen,
@@ -35,8 +34,7 @@ export const expire = internalMutation({
       .query("collector")
       .withIndex("by_name", (q) => q.eq("name", "desktop"))
       .unique();
-    if (row?.lastSeen === lastSeen)
-      await ctx.db.patch(row._id, { online: false });
+    if (row?.lastSeen === lastSeen) await ctx.db.patch(row._id, { online: false });
   },
 });
 export const claimNext = internalMutation({

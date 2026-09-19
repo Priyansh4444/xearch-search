@@ -3,9 +3,7 @@ import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 const config = await readFile(".env.local", "utf8");
 if (!/^CONVEX_DEPLOYMENT=anonymous:/m.test(config))
-  throw new Error(
-    "This setup is restricted to the existing anonymous local Convex deployment.",
-  );
+  throw new Error("This setup is restricted to the existing anonymous local Convex deployment.");
 await mkdir(".local-captures", { recursive: true, mode: 0o700 });
 let token;
 try {
