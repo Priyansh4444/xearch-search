@@ -35,9 +35,9 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { ConvexError } from "convex/values";
 import Dashboard from "./Dashboard";
 import { indexingUnavailableMessage } from "./integrationStatus";
+import { describeError } from "./errors";
 import { jobLabel, jobSummary, jobWarnings } from "./jobText";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
@@ -73,12 +73,6 @@ const safeHostname = (url: string) => {
     return "Linked page";
   }
 };
-const describeError = (e: unknown) =>
-  e instanceof ConvexError
-    ? String(e.data)
-    : e instanceof Error
-      ? e.message.replace(/\[CONVEX[^]*?Uncaught (?:Error|ConvexError):\s*/, "").split("\n")[0]
-      : "Something went wrong. Try again.";
 function Avatar({ name, url }: { name: string; url?: string }) {
   const [failedUrl, setFailedUrl] = useState<string>();
   return (

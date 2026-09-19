@@ -11,7 +11,7 @@ import { sortValidator, postFields } from "./schema";
 import { parseQuery } from "./lib/search";
 import { decodeSearchResponse } from "./lib/results";
 import { serviceToken } from "./lib/serviceAuth";
-import { budget, user } from "./access";
+import { user } from "./access";
 import type { Doc } from "./_generated/dataModel";
 export const accounts = query({
   args: {},
@@ -32,7 +32,6 @@ export const start = mutation({
         "The search service is not connected yet. Configure SEARCH_API_URL to use your corpus.",
       );
     if ((args.cursor?.length ?? 0) > 4000) throw new ConvexError("Invalid cursor.");
-    await budget(ctx, `search:${owner}`, 200);
     const id = await ctx.db.insert("sessions", {
       owner,
       ...args,

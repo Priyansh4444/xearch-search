@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { components } from "./_generated/api";
 import { AgentMail, type OutboundId } from "@agentmail/convex";
 import { v, ConvexError } from "convex/values";
-import { user, budget } from "./access";
+import { user } from "./access";
 const mail = new AgentMail(components.agentmail);
 export const send = mutation({
   args: { sessionId: v.id("sessions"), recipient: v.string() },
@@ -23,8 +23,6 @@ export const send = mutation({
     const result = await ctx.db.get(args.sessionId);
     if (!result || result.owner !== owner || result.status !== "complete" || !result.rows.length)
       throw new ConvexError("There are no completed search results to send.");
-    await budget(ctx, "email:global", 20);
-    await budget(ctx, `email:${owner}`, 3);
     const text =
       `Xearch results for: ${result.raw}\n\nFirst ${Math.min(10, result.rows.length)} results on this page.\n${result.warnings.join("\n")}\n\n` +
       result.rows
