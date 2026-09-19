@@ -10,8 +10,8 @@
 - **Convex features:** authenticated sessions, queries, mutations, scheduled actions, receipt/checkpoint transactions, reactive search and delivery state, bounded cleanup cron
 - **Auth:** Convex Auth
 - **AI models:** gpt-5-mini (code fallback); production model is environment-configured
-- **Started:** 2026-09-19T01:44:12Z
-- **Last updated:** 2026-09-19T04:38:00Z
+- **Started:** 2026-09-19T04:38:51Z
+- **Last updated:** 2026-09-19T04:38:51Z
 
 ## Log
 
@@ -49,3 +49,7 @@ Connected production to the temporary Mac receiver through an outbound worker. A
 ### 2026-09-19 - repository setup
 
 Added the official Convex hackathon skill with its references and license under `.agents/skills/hackathon`. Removed the old reference checkout from this repository and kept upstream architecture attribution in the docs. Added ignore rules for secrets, captures, databases, backups, and build output. The new Git history starts here; the earlier build chronology above comes from this work session and source timestamps, not older commits. Source timestamps are weaker evidence than Git history. Registered third-party integrations remain Firecrawl and AgentMail in `convex/convex.config.ts`; their runtime verification limits are recorded above.
+
+### 2026-09-19 - 1198654
+
+Recorded the initial application, integration code, tests, and hackathon skill in the first Git commit. The repository remote is `https://github.com/pc-style/xearch`. Updated the header's start time to this first commit; the earlier source-based start estimate was `2026-09-19T01:44:12Z`. The preceding entries preserve that pre-commit work chronology. This checkpoint adds Git evidence, not a new deployment or integration verification.
