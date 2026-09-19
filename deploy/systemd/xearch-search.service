@@ -1,0 +1,21 @@
+[Unit]
+Description=Xearch disk-backed search service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/exedev/xearch-data/search
+EnvironmentFile=/home/exedev/xearch-data/search/service.env
+ExecStart=/home/exedev/xearch-worker/search/target/release/xearch-search --index /home/exedev/xearch-data/search/index serve --listen 127.0.0.1:4320
+Restart=always
+RestartSec=5s
+UMask=0077
+StandardOutput=append:/home/exedev/xearch-data/search/search.log
+StandardError=append:/home/exedev/xearch-data/search/search.log
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/exedev/xearch-data/search
+
+[Install]
+WantedBy=default.target

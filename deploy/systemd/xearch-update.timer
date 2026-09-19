@@ -1,0 +1,10 @@
+[Unit]
+Description=Xearch: check origin/main every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=xearch-update.service
+
+[Install]
+WantedBy=timers.target

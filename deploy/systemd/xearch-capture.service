@@ -4,17 +4,17 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/exedev/xearch
-ExecStart=/usr/bin/node scripts/capture-server.mjs
+WorkingDirectory=/home/exedev/xearch-data
+ExecStart=/usr/bin/node /home/exedev/xearch-worker/scripts/capture-server.mjs
 Restart=always
 RestartSec=5s
 UMask=0077
-StandardOutput=append:/home/exedev/xearch/.local-captures/logs/capture.log
-StandardError=append:/home/exedev/xearch/.local-captures/logs/capture.log
+StandardOutput=append:/home/exedev/xearch-data/.local-captures/logs/capture.log
+StandardError=append:/home/exedev/xearch-data/.local-captures/logs/capture.log
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/home/exedev/xearch/.local-captures
+ReadWritePaths=/home/exedev/xearch-data
 
 [Install]
 WantedBy=default.target
