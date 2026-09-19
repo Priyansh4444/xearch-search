@@ -1,0 +1,19 @@
+[package]
+name = "search-indexer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[lints]
+workspace = true
+[dependencies]
+search-ingest.workspace = true
+search-model.workspace = true
+search-query.workspace = true
+search-tantivy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+[dev-dependencies]
+tempfile.workspace = true

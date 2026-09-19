@@ -1349,6 +1349,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "search-indexer"
+version = "0.1.0"
+dependencies = [
+ "search-ingest",
+ "search-model",
+ "search-query",
+ "search-tantivy",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "search-ingest"
 version = "0.1.0"
 dependencies = [
@@ -2094,6 +2109,7 @@ dependencies = [
  "jiff",
  "search-api",
  "search-backend",
+ "search-indexer",
  "search-ingest",
  "search-model",
  "search-query",
