@@ -46,6 +46,7 @@ schema validator:
 ```ts
 import { v } from "convex/values";
 import schema from "./schema.js";
+import { internalQuery } from "./_generated/server.js";
 
 const vNotification = schema.doc("notifications").omit("userId").extend({
   user: v.string(),
@@ -54,7 +55,7 @@ const vNotification = schema.doc("notifications").omit("userId").extend({
 export const getNotification = internalQuery({
   args: { id: schema.id("notifications") },
   returns: v.nullable(vNotification),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const notification = await ctx.db.get("notifications", args.id);
     if (!notification) return null;
     const { userId, ...rest } = notification;

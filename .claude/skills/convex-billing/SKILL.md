@@ -20,7 +20,7 @@ Wire Stripe to Convex using @convex-dev/stripe: a checkout action, an httpAction
    app.use(stripe);
    export default app;
    ```
-3. Store Stripe keys in Convex env (use the `env` micro power): `STRIPE_SECRET_KEY` (sk_test_… / sk_live_…) and `STRIPE_WEBHOOK_SECRET` (whsec_…).
+3. Store Stripe keys in Convex env (use the `env` micro power): `STRIPE_SECRET_KEY` (sk_test_… / sk_live_…) and `STRIPE_WEBHOOK_SECRET` (whsec_…). Set a non-empty `SITE_URL` for the same deployment before enabling checkout; use the deployed application origin, never localhost fallback.
 4. Create `convex/http.ts` to register the webhook route (the component handles signature verification automatically):
    ```ts
    import { httpRouter } from "convex/server";
@@ -43,6 +43,8 @@ Wire Stripe to Convex using @convex-dev/stripe: a checkout action, an httpAction
      handler: async (ctx, args) => {
        const identity = await ctx.auth.getUserIdentity();
        if (!identity) throw new Error("Not authenticated");
+       const siteUrl = process.env.SITE_URL?.trim();
+       if (!siteUrl) throw new Error("SITE_URL must be configured before checkout");
        const customer = await stripeClient.getOrCreateCustomer(ctx, {
          userId: identity.subject,
          email: identity.email,
@@ -52,8 +54,8 @@ Wire Stripe to Convex using @convex-dev/stripe: a checkout action, an httpAction
          priceId: args.priceId,
          customerId: customer.customerId,
          mode: "subscription",
-         successUrl: `${process.env.SITE_URL ?? "http://localhost:3000"}/?success=true`,
-         cancelUrl: `${process.env.SITE_URL ?? "http://localhost:3000"}/?canceled=true`,
+         successUrl: `${siteUrl}/?success=true`,
+         cancelUrl: `${siteUrl}/?canceled=true`,
          subscriptionMetadata: { userId: identity.subject },
        });
      },
@@ -79,5 +81,6 @@ Wire Stripe to Convex using @convex-dev/stripe: a checkout action, an httpAction
 
 - Use @convex-dev/stripe (npm: @convex-dev/stripe@^0.1.4) — it handles webhook signature verification internally via registerRoutes; do NOT write a manual constructEvent webhook.
 - Stripe keys live in Convex env (use the `env` micro power): STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.
+- Configure and validate a non-empty `SITE_URL` on every target deployment before checkout. Never fall back to localhost; use the same validated value for success and cancellation URLs.
 - Gate on server-stored subscription state via isSubscribed query (reads component tables), not client claims.
 - convex/convex.config.ts must import from '@convex-dev/stripe/convex.config.js' (not .ts) — the .js extension is required by the Convex bundler.

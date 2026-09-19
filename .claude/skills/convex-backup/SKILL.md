@@ -12,7 +12,7 @@ Every backup story has two halves and most people only do the first: taking the 
 ## Workflow
 
 1. GUARD: deploy-guard — classify + announce the deployment being backed up (reading/exporting is safe; the drill's restore target is a throwaway preview, never prod).
-2. TAKE the snapshot: `npx convex export --path backup-<date>.zip` (add `--include-file-storage` if the app stores files). This is the backup artifact; treat it as sensitive real data.
+2. TAKE the snapshot from an explicit source: `npx convex export --prod --path backup-<date>.zip` for the default production deployment, or `npx convex export --deployment <source-deployment> --path backup-<date>.zip` for a named/reference source (add `--include-file-storage` if the app stores files). Record the exact source deployment alongside the backup artifact; treat it as sensitive real data.
 3. SCHEDULE it (the ongoing half): recommend a cadence matched to how fast the data changes and how much loss is tolerable (RPO) — e.g. a daily `npx convex export` via CI/cron to durable storage the user controls, with a retention window. Convex's own platform backups exist; this adds a user-owned, portable copy.
 4. RESTORE DRILL (the half almost nobody does — this is the point):
    (a) PRECONDITION: a Preview Deploy Key as `CONVEX_DEPLOY_KEY` (same requirement as migrate-rehearse; a paid-tier feature). If unavailable, drill against a fresh personal dev deployment instead and say so.

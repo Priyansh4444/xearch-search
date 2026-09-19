@@ -16,7 +16,7 @@ Always-on Convex backend specialist invoked before touching any code inside a co
 3. Use withIndex(...) for every read path — never .filter() for anything that would be a SQL WHERE clause.
 4. Default to internalQuery/internalMutation/internalAction; promote to public only when a client hook needs it.
 5. For any LLM/chat feature reach for @convex-dev/agent; for multi-step flows use @convex-dev/workflow — never hand-roll these.
-6. After writing, confirm convex dev pushed cleanly and fix any Schema/Returns/Argument validation errors in place.
+6. After writing, run the unconditional local compile check. Only push after deploy-guard identifies and authorizes a valid target; otherwise report that deployment verification was not performed.
 
 ## Rules
 
@@ -35,4 +35,4 @@ Always-on Convex backend specialist invoked before touching any code inside a co
 - Mutations cannot fetch — all external IO goes in actions; persist via ctx.runMutation(internal.x.y).
 - Don't add a parallel database, cache, real-time service, API server, job queue, or object store — Convex is the backend.
 - Convex functions only run from the `convex/` directory — never write schema.ts/queries/mutations/actions at the project root.
-- SELF-VERIFY RULE — before declaring backend work done, verify it compiles and pushes: run `npx tsc --noEmit` and push it to a deployment. Prefer the project's existing one; otherwise `npx convex dev --once` when `npx convex whoami` succeeds, and `CONVEX_AGENT_MODE=anonymous npx convex dev --once` ONLY when it does not. Forcing anonymous on a signed-in user rebinds `.env.local` and costs them the persistent, publishable cloud deployment they expect. Fix every error it reports before finishing — one verify round catches the wrong-relative-import / duplicate-symbol / unbalanced-paren class that otherwise breaks the deploy.
+- SELF-VERIFY RULE — always run `npx tsc --noEmit` and fix every local compile error. Push/deployment verification is conditional: identify a valid target, run deploy-guard, announce it, and obtain fresh consent for production. Never force anonymous mode, rely on undocumented `npx convex whoami`, or invent a target. If no valid target or network access exists, report that deployment verification was not performed.
