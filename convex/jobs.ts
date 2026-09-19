@@ -2,7 +2,7 @@ import { v, ConvexError } from "convex/values";
 import { query, mutation, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { kindValidator } from "./schema";
-import { budget, user } from "./access";
+import { budgets, user } from "./access";
 import { handle, statusUrl } from "./lib/xmd";
 
 export const list = query({
@@ -107,8 +107,10 @@ export const start = mutation({
             .withIndex("by_handle", (q) => q.eq("handle", input))
             .unique()
         : null;
-    await budget(ctx, "xmd:global", 60);
-    await budget(ctx, `xmd:${owner}`, 12);
+    await budgets(ctx, [
+      { key: "xmd:global", maximum: 60 },
+      { key: `xmd:${owner}`, maximum: 12 },
+    ]);
     const id = await ctx.db.insert("jobs", {
       owner,
       kind: args.kind,
@@ -191,8 +193,10 @@ export const retry = mutation({
         .first();
       if (active) throw new ConvexError("This indexing job is already active.");
     }
-    await budget(ctx, "xmd:global", 60);
-    await budget(ctx, `xmd:${owner}`, 12);
+    await budgets(ctx, [
+      { key: "xmd:global", maximum: 60 },
+      { key: `xmd:${owner}`, maximum: 12 },
+    ]);
     await ctx.db.patch(jobId, {
       status: "queued",
       readyAt: 0,
@@ -306,8 +310,10 @@ export const finish = internalMutation({
         : undefined;
     if (retry || (wantsMore && !pause)) {
       try {
-        await budget(ctx, "xmd:global", 60);
-        await budget(ctx, `xmd:${job.owner}`, 12);
+        await budgets(ctx, [
+          { key: "xmd:global", maximum: 60 },
+          { key: `xmd:${job.owner}`, maximum: 12 },
+        ]);
       } catch {
         retry = false;
         pause =

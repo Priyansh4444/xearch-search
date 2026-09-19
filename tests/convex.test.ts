@@ -343,9 +343,14 @@ describe("Convex application boundaries", () => {
   });
   it("does not schedule an automatic retry after the daily budget is exhausted", async () => {
     const { t, alice } = await setup();
+    const day = new Date().toISOString().slice(0, 10);
     const jobId = await t.run(async (ctx) => {
       await ctx.db.insert("budgets", {
-        key: `${new Date().toISOString().slice(0, 10)}:xmd:${alice}`,
+        key: `${day}:xmd:global`,
+        count: 7,
+      });
+      await ctx.db.insert("budgets", {
+        key: `${day}:xmd:${alice}`,
         count: 12,
       });
       return ctx.db.insert("jobs", {
@@ -373,6 +378,14 @@ describe("Convex application boundaries", () => {
       error: "Provider unavailable",
     });
     expect((await t.run((ctx) => ctx.db.get(jobId)))?.readyAt).toBeUndefined();
+    expect(
+      await t.run((ctx) =>
+        ctx.db
+          .query("budgets")
+          .withIndex("by_key", (q) => q.eq("key", `${day}:xmd:global`))
+          .unique(),
+      ),
+    ).toMatchObject({ count: 7 });
   });
   it("owns cancellation and rejects progress from a stopped worker", async () => {
     const { t, a, b, alice } = await setup();

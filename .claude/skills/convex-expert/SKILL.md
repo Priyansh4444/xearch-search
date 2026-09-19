@@ -11,7 +11,7 @@ Always-on Convex backend specialist invoked before touching any code inside a co
 
 ## Workflow
 
-1. When about to write or edit any file under convex/: read convex/schema.ts first (and convex/_generated/ai/guidelines.md if present).
+1. Resolve the functions directory from `convex.json` before locating or creating backend files (for example `src/convex/`); default to project-root `convex/` only when no custom directory is configured. Read that directory's `schema.ts` and `_generated/ai/guidelines.md` if present before editing.
 2. Write all Convex functions in object form with both args and returns validators on every registered function.
 3. Use withIndex(...) for every read path — never .filter() for anything that would be a SQL WHERE clause.
 4. Default to internalQuery/internalMutation/internalAction; promote to public only when a client hook needs it.
@@ -34,5 +34,5 @@ Always-on Convex backend specialist invoked before touching any code inside a co
 - Never store storage URLs in tables — store the Id<'_storage'> and call ctx.storage.getUrl(id) on read.
 - Mutations cannot fetch — all external IO goes in actions; persist via ctx.runMutation(internal.x.y).
 - Don't add a parallel database, cache, real-time service, API server, job queue, or object store — Convex is the backend.
-- Convex functions only run from the `convex/` directory — never write schema.ts/queries/mutations/actions at the project root.
+- Convex functions only run from the functions directory configured in `convex.json`; use project-root `convex/` only when no custom directory is configured.
 - SELF-VERIFY RULE — always run `npx tsc --noEmit` and fix every local compile error. Push/deployment verification is conditional: identify a valid target, run deploy-guard, announce it, and obtain fresh consent for production. Never force anonymous mode, rely on undocumented `npx convex whoami`, or invent a target. If no valid target or network access exists, report that deployment verification was not performed.

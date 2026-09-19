@@ -19,7 +19,7 @@ Sentry/Datadog/Vercel can go error→investigate→draft-PR, but they treat the 
 6. CERTIFY against the backend's own invariants BEFORE proposing (this is the differentiator — do not skip any that apply):
    (a) `tsc --noEmit` clean;
    (b) if the fix touches schema/data, run it through migrate-rehearse on a preview seeded with a prod snapshot — the schema-conformance gate must pass on real-shaped data;
-   (c) reproduce-then-confirm-gone: replay the error's triggering input against the fixed code (a convex-test case or an MCP run on the preview) and assert the failure no longer occurs;
+   (c) reproduce-then-confirm-gone: replay a sanitized `convex-test` fixture against the fixed code and assert the failure no longer occurs. If fidelity requires production-shaped input, use it only on a protected, access-controlled preview; provide only sanitized evidence to model-backed audits and delete replay artifacts afterward;
    (d) no-regression: the finding must be gone AND no new bus finding introduced on the touched function.
    A fix that fails any applicable certification is NOT proposed — it's reported as 'attempted, could not certify' with what failed.
 7. PROPOSE, never merge: open a PR (or a diff for review) containing only the fix, sanitized fixtures, references to the protected incident record, certification evidence, a sanitized summary of the original finding/error, a reversibility note, and the change-class label. Never include the original incident record, raw production inputs, or reconstructed production request payloads. The human reviews and merges.
