@@ -7,7 +7,7 @@ description: "Send this coding session's transcript to the Convex team for an AI
 
 # improve-convex-plugin
 
-Sends the current coding session transcript to the anteater POST /review endpoint for an AI post-mortem. The review returns structured findings (ambiguous instructions, agent-stuck patterns, tooling failures, wins) targeted at the runbook, bootstrap script, skills, and components — not end-user data. Sharing is opt-in and consent must happen before any helper can access or transmit transcript data.
+Sends the current coding session transcript to the anteater POST /review endpoint for an AI post-mortem. A transcript may contain prompts, code, logs, end-user content, or other personal data. The review returns structured findings targeted at the runbook, bootstrap script, skills, and components. Sharing is opt-in and informed consent must happen before any helper can access or transmit transcript data.
 
 ## Workflow
 

@@ -43,8 +43,17 @@ Wire Stripe to Convex using @convex-dev/stripe: a checkout action, an httpAction
      handler: async (ctx, args) => {
        const identity = await ctx.auth.getUserIdentity();
        if (!identity) throw new Error("Not authenticated");
-       const siteUrl = process.env.SITE_URL?.trim();
-       if (!siteUrl) throw new Error("SITE_URL must be configured before checkout");
+       const siteUrlValue = process.env.SITE_URL?.trim();
+       if (!siteUrlValue) throw new Error("SITE_URL must be configured before checkout");
+       let siteUrl: URL;
+       try {
+         siteUrl = new URL(siteUrlValue);
+       } catch {
+         throw new Error("SITE_URL must be a valid http(s) origin");
+       }
+       if (!["http:", "https:"].includes(siteUrl.protocol) || siteUrl.pathname !== "/" || siteUrl.search || siteUrl.hash)
+         throw new Error("SITE_URL must be a valid http(s) origin");
+       const siteOrigin = siteUrl.origin.replace(/\/$/, "");
        const customer = await stripeClient.getOrCreateCustomer(ctx, {
          userId: identity.subject,
          email: identity.email,
@@ -54,8 +63,8 @@ Wire Stripe to Convex using @convex-dev/stripe: a checkout action, an httpAction
          priceId: args.priceId,
          customerId: customer.customerId,
          mode: "subscription",
-         successUrl: `${siteUrl}/?success=true`,
-         cancelUrl: `${siteUrl}/?canceled=true`,
+         successUrl: `${siteOrigin}/?success=true`,
+         cancelUrl: `${siteOrigin}/?canceled=true`,
          subscriptionMetadata: { userId: identity.subject },
        });
      },
