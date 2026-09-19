@@ -14,7 +14,8 @@
 #
 #   scripts/search-index-ctl.sh install          # builds release + ~/.local/bin
 #   cp deploy/systemd/xearch-search-indexer.service ~/.config/systemd/user/
-#   mkdir -p "$SEARCH_BASE_DIR"/{index,archive,drop,state,logs}  # required before start: systemd opens append logs before running any processes
+#   BASE="${SEARCH_BASE_DIR:-$HOME/xearch-search}"
+#   mkdir -p "$BASE"/{index,archive,drop,state}
 #   systemctl --user daemon-reload
 #
 # Data root defaults to ~/xearch-search; override with
@@ -25,12 +26,11 @@
 #
 # Status and control (prefer scripts/search-index-ctl.sh):
 #   systemctl --user status xearch-search-indexer.service
-#   tail -f "$SEARCH_BASE_DIR"/logs/indexer.log
+#   journalctl --user -fu xearch-search-indexer.service
 #   xearch-search --base-dir "$SEARCH_BASE_DIR" users list
 #
-# systemd expands ${VAR} in arguments but NOT in the ExecStart executable
-# position nor in StandardOutput/StandardError paths, so those use %h
-# specifiers and literal paths below.
+# systemd expands ${VAR} in arguments but not in the ExecStart executable
+# position, so the executable uses the %h specifier below.
 [Unit]
 Description=Xearch background search indexer (Rust drop-dir watcher)
 After=network.target
