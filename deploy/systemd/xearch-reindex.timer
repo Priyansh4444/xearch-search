@@ -1,0 +1,10 @@
+[Unit]
+Description=Xearch: reindex sweep every two minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+Unit=xearch-reindex.service
+
+[Install]
+WantedBy=timers.target

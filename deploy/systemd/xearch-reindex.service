@@ -1,0 +1,13 @@
+[Unit]
+Description=Xearch: import new raw captures into the search index
+
+[Service]
+Type=oneshot
+ExecStart=/home/exedev/xearch-worker/scripts/reindex.sh
+UMask=0077
+StandardOutput=append:/home/exedev/xearch-data/search/reindex.log
+StandardError=append:/home/exedev/xearch-data/search/reindex.log
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/exedev/xearch-data/search

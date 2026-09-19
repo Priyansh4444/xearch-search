@@ -1,0 +1,9 @@
+[Unit]
+Description=Xearch: reindex as soon as a capture lands
+
+[Path]
+PathChanged=/home/exedev/xearch-data/.local-captures/raw
+Unit=xearch-reindex.service
+
+[Install]
+WantedBy=default.target

@@ -1,19 +1,17 @@
 [Unit]
-Description=Xearch production frontend
+Description=Xearch nginx: static site on :8080, search edge on :4321
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/exedev/xearch
-ExecStart=/usr/sbin/nginx -c /home/exedev/xearch/deploy/nginx/xearch.conf -p /home/exedev/xearch/.local-hosting/
-ExecReload=/bin/kill -HUP $MAINPID
+ExecStart=/usr/sbin/nginx -c /home/exedev/xearch-worker/deploy/nginx/xearch.conf -p /home/exedev/xearch-data/hosting/
 Restart=always
 RestartSec=5s
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/home/exedev/xearch/.local-hosting
+ReadWritePaths=/home/exedev/xearch-data/hosting
 
 [Install]
 WantedBy=default.target

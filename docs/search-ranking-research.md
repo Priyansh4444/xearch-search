@@ -31,17 +31,17 @@ need not produce numerically identical BM25 scores.
 
 ## Options worth evaluating
 
-| Family / exact model | Offline work | Work for each new query | Decision here |
-| --- | --- | --- | --- |
-| Tantivy BM25 | Tokenize and write postings, positions, and metadata | Parse, retrieve, score, select results | Ship and measure first |
-| BM25 plus engagement and freshness | Store numeric features | Read features for matching documents | Already supported; benchmark broad queries separately |
-| `BAAI/bge-small-en-v1.5` | Embed each tweet into 384 dimensions | Encode the query and retrieve vector candidates | First optional semantic experiment |
-| `intfloat/e5-small-v2` | Embed passages with the required prefix | Encode with the query prefix and retrieve candidates | Alternative English retrieval baseline |
-| `sentence-transformers/all-MiniLM-L6-v2` | Embed tweets into 384 dimensions | Encode query and retrieve candidates | Useful compact similarity baseline |
-| `cross-encoder/ms-marco-MiniLM-L6-v2` or `cross-encoder/ms-marco-TinyBERT-L2-v2` | No reusable query-independent pair score | Run inference on each query/candidate pair | Optional bounded reranker after measurement |
-| SPLADE sparse neural retrieval | Compute sparse learned term weights | Neural query encoding, then sparse retrieval | Defer pending demonstrated lexical recall problems |
-| ColBERT late interaction | Store multiple token embeddings per tweet | Encode query and compare token representations | Defer because it adds storage and scoring machinery |
-| `Qwen/Qwen3-Embedding-0.6B` | Encode documents with a larger multilingual model | Encode query, then retrieve | Defer on this shared CPU machine |
+| Family / exact model                                                             | Offline work                                         | Work for each new query                              | Decision here                                         |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------- |
+| Tantivy BM25                                                                     | Tokenize and write postings, positions, and metadata | Parse, retrieve, score, select results               | Ship and measure first                                |
+| BM25 plus engagement and freshness                                               | Store numeric features                               | Read features for matching documents                 | Already supported; benchmark broad queries separately |
+| `BAAI/bge-small-en-v1.5`                                                         | Embed each tweet into 384 dimensions                 | Encode the query and retrieve vector candidates      | First optional semantic experiment                    |
+| `intfloat/e5-small-v2`                                                           | Embed passages with the required prefix              | Encode with the query prefix and retrieve candidates | Alternative English retrieval baseline                |
+| `sentence-transformers/all-MiniLM-L6-v2`                                         | Embed tweets into 384 dimensions                     | Encode query and retrieve candidates                 | Useful compact similarity baseline                    |
+| `cross-encoder/ms-marco-MiniLM-L6-v2` or `cross-encoder/ms-marco-TinyBERT-L2-v2` | No reusable query-independent pair score             | Run inference on each query/candidate pair           | Optional bounded reranker after measurement           |
+| SPLADE sparse neural retrieval                                                   | Compute sparse learned term weights                  | Neural query encoding, then sparse retrieval         | Defer pending demonstrated lexical recall problems    |
+| ColBERT late interaction                                                         | Store multiple token embeddings per tweet            | Encode query and compare token representations       | Defer because it adds storage and scoring machinery   |
+| `Qwen/Qwen3-Embedding-0.6B`                                                      | Encode documents with a larger multilingual model    | Encode query, then retrieve                          | Defer on this shared CPU machine                      |
 
 BGE small supports 512-token inputs and documents an ONNX inference path. Its
 card recommends a retrieval instruction for short queries and no instruction

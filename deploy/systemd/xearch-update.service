@@ -1,0 +1,11 @@
+[Unit]
+Description=Xearch: fast-forward the VM to origin/main and restart what changed
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/exedev/xearch-worker/scripts/vm-update.sh
+StandardOutput=append:/home/exedev/xearch-data/update.log
+StandardError=append:/home/exedev/xearch-data/update.log
+NoNewPrivileges=true
