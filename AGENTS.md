@@ -1,3 +1,21 @@
+# Working in Xearch
+
+User prompts override repository instructions; repository instructions override
+global defaults, subject to system and developer requirements.
+
+## Stack and scope
+
+Use Bun with the committed `bun.lock`. The app uses TypeScript, React 19, Vite,
+and hosted Convex. Use Oxlint for linting, Oxfmt for formatting, and Vitest for
+tests. Do not introduce TypeScript `any` or suppress checks to make code pass
+unless explicitly requested. Keep changes scoped; do not add unrequested
+features or abstractions.
+
+This repository is the shared application home. Convex owns application state;
+Prronsh owns the indexer and Elasticsearch implementation. Preserve the search
+service boundary and the Firecrawl, OpenAI, x.md, and AgentMail integrations.
+Do not build a competing search implementation without an explicit request.
+
 <!-- convex-ai-start -->
 
 This project uses [Convex](https://convex.dev) as its backend.
@@ -25,3 +43,31 @@ capture receiver, or private logs. Production imports can spend provider credits
 never start or test an import without explicit approval, and never start the VM
 production worker until the previous worker is confirmed stopped and any final
 capture sync is resolved.
+
+Keep the capture receiver on `127.0.0.1:4319`. Use only documented exe.dev
+features: https://exe.dev/docs.md and https://exe.dev/docs/proxy.md. Use exe.dev
+HTTPS links for user-facing services; this does not authorize exposing private
+services or changing access controls. Confirm the domain before configuring
+custom public HTTPS. Moving a worker does not move Convex.
+
+Preserve existing `.env*` files, tokens, captures, and database backups. Never
+print or commit secrets or private data. Keep service logs private. Read
+`docs/production.md` and `docs/vm-migration.md` before changing service setup;
+consult `TRANSFER.md` for archive provenance, not current runtime status.
+
+## Verification and Git
+
+Inspect actual files and Git state before editing. Preserve unrelated changes.
+Use a new branch for migration changes unless the user directs otherwise.
+Distinguish committing/pushing, merging, and deploying; do not treat one as
+authorization for another.
+
+Run checks proportional to the change: targeted Vitest tests for behavior,
+`bun run lint` and `bun run typecheck` for code changes, and a build for frontend
+or build-tool changes. Documentation-only edits need a diff/format check, not
+the full suite. Do not start development servers or paid imports as routine
+verification. Build verification must not overwrite the live frontend's `dist/`;
+use a temporary output directory unless deployment is intended.
+
+Report what changed, what was verified, and what remains blocked. When changing
+services, distinguish installed, enabled, running, and health-checked state.
