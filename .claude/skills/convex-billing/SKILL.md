@@ -51,7 +51,12 @@ Wire Stripe to Convex using @convex-dev/stripe: a checkout action, an httpAction
        } catch {
          throw new Error("SITE_URL must be a valid http(s) origin");
        }
-       if (!["http:", "https:"].includes(siteUrl.protocol) || siteUrl.pathname !== "/" || siteUrl.search || siteUrl.hash)
+       if (
+         !["http:", "https:"].includes(siteUrl.protocol) ||
+         siteUrl.pathname !== "/" ||
+         siteUrl.search ||
+         siteUrl.hash
+       )
          throw new Error("SITE_URL must be a valid http(s) origin");
        const siteOrigin = siteUrl.origin.replace(/\/$/, "");
        const customer = await stripeClient.getOrCreateCustomer(ctx, {

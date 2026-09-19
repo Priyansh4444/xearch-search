@@ -196,9 +196,7 @@ function PostCard({
         </button>
         <div className="post-meta">
           {hasValidDate ? (
-            <time dateTime={createdAt.toISOString()}>
-              {postDate.format(createdAt)}
-            </time>
+            <time dateTime={createdAt.toISOString()}>{postDate.format(createdAt)}</time>
           ) : null}
           <button
             className={`icon ${bookmarked ? "accent" : ""}`}
@@ -683,12 +681,12 @@ export default function App() {
                     : configured === undefined
                       ? "Checking your search service connection"
                       : !configured.search
-                      ? "Waiting for the search service connection"
-                      : result?.status === "complete"
-                        ? `${result.rows.length} posts on this page`
-                        : result?.status === "failed"
-                          ? "Search could not complete"
-                          : "Finding matching posts…"}
+                        ? "Waiting for the search service connection"
+                        : result?.status === "complete"
+                          ? `${result.rows.length} posts on this page`
+                          : result?.status === "failed"
+                            ? "Search could not complete"
+                            : "Finding matching posts…"}
                 </p>
               </div>
               {view === "search" && (
