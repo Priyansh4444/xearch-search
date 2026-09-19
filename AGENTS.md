@@ -3,6 +3,16 @@
 User prompts override repository instructions; repository instructions override
 global defaults, subject to system and developer requirements.
 
+## Rate limiting
+
+This is early development. Do not add self-imposed rate limits, quotas, or
+usage budgets on our own side (per-owner or global counters, daily caps,
+"to limit API use" pauses) for imports, search, email, or any other action.
+Only respect limits the provider itself reports (e.g. x.md's `retryAfter`) —
+we don't control those and shouldn't work around them, but we also should
+not add our own on top. If a genuine abuse or cost concern comes up, ask
+before adding a budget mechanism back.
+
 ## Stack and scope
 
 Use Bun with the committed `bun.lock`. The app uses TypeScript, React 19, Vite,

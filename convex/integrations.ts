@@ -2,7 +2,7 @@ import { action, query, internalMutation, internalQuery } from "./_generated/ser
 import { internal, components } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { FirecrawlClient } from "@firecrawl/firecrawl-convex";
-import { budget, user } from "./access";
+import { user } from "./access";
 import { publicUrl, record, string, XmdClient } from "./lib/xmd";
 import { z } from "zod";
 import { deliverCapture } from "./lib/handoff";
@@ -38,10 +38,8 @@ export const reserve = internalMutation({
   args: {
     service: v.union(v.literal("firecrawl"), v.literal("openai"), v.literal("xmd")),
   },
-  handler: async (ctx, { service }) => {
-    const owner = await user(ctx);
-    await budget(ctx, `${service}:global`, 60);
-    await budget(ctx, `${service}:${owner}`, 12);
+  handler: async (ctx) => {
+    await user(ctx);
   },
 });
 export const page = internalQuery({

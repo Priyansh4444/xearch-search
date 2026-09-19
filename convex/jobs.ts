@@ -2,7 +2,7 @@ import { v, ConvexError } from "convex/values";
 import { query, mutation, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { kindValidator } from "./schema";
-import { budgets, user } from "./access";
+import { user } from "./access";
 import { handle, statusUrl } from "./lib/xmd";
 
 export const list = query({
@@ -107,10 +107,6 @@ export const start = mutation({
             .withIndex("by_handle", (q) => q.eq("handle", input))
             .unique()
         : null;
-    await budgets(ctx, [
-      { key: "xmd:global", maximum: 60 },
-      { key: `xmd:${owner}`, maximum: 12 },
-    ]);
     const id = await ctx.db.insert("jobs", {
       owner,
       kind: args.kind,
@@ -193,10 +189,6 @@ export const retry = mutation({
         .first();
       if (active) throw new ConvexError("This indexing job is already active.");
     }
-    await budgets(ctx, [
-      { key: "xmd:global", maximum: 60 },
-      { key: `xmd:${owner}`, maximum: 12 },
-    ]);
     await ctx.db.patch(jobId, {
       status: "queued",
       readyAt: 0,
@@ -296,30 +288,16 @@ export const finish = internalMutation({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (!job || job.status !== "running" || job.attempt !== args.attempt) return;
-    let retry = args.retryAfter !== undefined && (job.pageAttempt ?? args.attempt) < 3;
+    const retry = args.retryAfter !== undefined && (job.pageAttempt ?? args.attempt) < 3;
     const pages = (job.pages ?? 0) + (args.error ? 0 : 1);
     const wantsMore = !args.error && job.kind === "bulk" && job.autoContinue && !!args.nextUntil;
     const stalled =
       wantsMore &&
       (!Number.isFinite(Date.parse(args.nextUntil!)) ||
         (job.until !== undefined && Date.parse(args.nextUntil!) >= Date.parse(job.until)));
-    let pause = stalled
+    const pause = stalled
       ? "Paused because x.md did not return an older page. Your downloaded posts are safe."
-      : wantsMore && pages >= 20
-        ? "Paused after 20 batches to limit API use. Continue when you're ready."
-        : undefined;
-    if (retry || (wantsMore && !pause)) {
-      try {
-        await budgets(ctx, [
-          { key: "xmd:global", maximum: 60 },
-          { key: `xmd:${job.owner}`, maximum: 12 },
-        ]);
-      } catch {
-        retry = false;
-        pause =
-          "Paused at today's import limit. Your downloaded posts are safe. Try again tomorrow.";
-      }
-    }
+      : undefined;
     const continueImport = wantsMore && !pause;
     await ctx.db.patch(job._id, {
       status:

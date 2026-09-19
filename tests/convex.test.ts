@@ -23,46 +23,6 @@ async function setup() {
   };
 }
 describe("Convex application boundaries", () => {
-  it("enforces global and owner budgets before starting or retrying imports", async () => {
-    const { t, a, alice } = await setup();
-    vi.stubEnv("COLLECTOR_MODE", "outbound");
-    vi.stubEnv("X_MD_API_KEY", "test");
-    await t.mutation(internal.worker.heartbeat, { online: true });
-    await t.run(async (ctx) => {
-      const day = new Date().toISOString().slice(0, 10);
-      await ctx.db.insert("budgets", { key: `${day}:xmd:global`, count: 60 });
-    });
-    await expect(a.mutation(api.jobs.start, { kind: "profile", input: "example" })).rejects.toThrow(
-      "usage limit",
-    );
-    await t.run(async (ctx) => {
-      const day = new Date().toISOString().slice(0, 10);
-      const global = await ctx.db
-        .query("budgets")
-        .withIndex("by_key", (q) => q.eq("key", `${day}:xmd:global`))
-        .unique();
-      if (global) await ctx.db.patch(global._id, { count: 0 });
-      await ctx.db.insert("budgets", { key: `${day}:xmd:${alice}`, count: 12 });
-    });
-    await expect(
-      a.mutation(api.jobs.start, { kind: "profile", input: "differentinput" }),
-    ).rejects.toThrow("usage limit");
-    const jobId = await t.run((ctx) =>
-      ctx.db.insert("jobs", {
-        owner: alice,
-        kind: "profile",
-        input: "example",
-        status: "cancelled",
-        count: 0,
-        attempt: 0,
-        refresh: false,
-        warnings: [],
-        updatedAt: Date.now(),
-      }),
-    );
-    await expect(a.mutation(api.jobs.retry, { jobId })).rejects.toThrow("usage limit");
-    expect((await t.run((ctx) => ctx.db.get(jobId)))?.status).toBe("cancelled");
-  });
   it("publishes Effect-decoded search results through the existing service contract", async () => {
     const { t, a, b, alice } = await setup();
     vi.stubEnv("SEARCH_API_URL", "https://search.example/query");
@@ -305,87 +265,6 @@ describe("Convex application boundaries", () => {
     expect(job?.status).toBe("complete");
     expect(job?.error).toContain("did not return an older page");
     expect(job?.nextUntil).toBeUndefined();
-  });
-  it("stops automatic continuation when either daily budget is exhausted", async () => {
-    const { t, alice } = await setup();
-    const jobId = await t.run(async (ctx) => {
-      await ctx.db.insert("budgets", {
-        key: `${new Date().toISOString().slice(0, 10)}:xmd:global`,
-        count: 60,
-      });
-      return ctx.db.insert("jobs", {
-        owner: alice,
-        kind: "bulk",
-        input: "theo",
-        status: "running",
-        count: 2,
-        attempt: 1,
-        refresh: false,
-        warnings: [],
-        updatedAt: Date.now(),
-        autoContinue: true,
-      });
-    });
-    await t.mutation(internal.jobs.finish, {
-      jobId,
-      attempt: 1,
-      warnings: [],
-      postsReceived: 500,
-      nextUntil: "2026-06-01",
-    });
-    expect(await t.run((ctx) => ctx.db.get(jobId))).toMatchObject({
-      status: "complete",
-      postsReceived: 500,
-      nextUntil: "2026-06-01",
-      error: expect.stringContaining("today's import limit"),
-    });
-    expect((await t.run((ctx) => ctx.db.get(jobId)))?.until).toBeUndefined();
-  });
-  it("does not schedule an automatic retry after the daily budget is exhausted", async () => {
-    const { t, alice } = await setup();
-    const day = new Date().toISOString().slice(0, 10);
-    const jobId = await t.run(async (ctx) => {
-      await ctx.db.insert("budgets", {
-        key: `${day}:xmd:global`,
-        count: 7,
-      });
-      await ctx.db.insert("budgets", {
-        key: `${day}:xmd:${alice}`,
-        count: 12,
-      });
-      return ctx.db.insert("jobs", {
-        owner: alice,
-        kind: "profile",
-        input: "theo",
-        status: "running",
-        count: 0,
-        attempt: 1,
-        pageAttempt: 1,
-        refresh: false,
-        warnings: [],
-        updatedAt: Date.now(),
-      });
-    });
-    await t.mutation(internal.jobs.finish, {
-      jobId,
-      attempt: 1,
-      warnings: [],
-      error: "Provider unavailable",
-      retryAfter: 1000,
-    });
-    expect(await t.run((ctx) => ctx.db.get(jobId))).toMatchObject({
-      status: "failed",
-      error: "Provider unavailable",
-    });
-    expect((await t.run((ctx) => ctx.db.get(jobId)))?.readyAt).toBeUndefined();
-    expect(
-      await t.run((ctx) =>
-        ctx.db
-          .query("budgets")
-          .withIndex("by_key", (q) => q.eq("key", `${day}:xmd:global`))
-          .unique(),
-      ),
-    ).toMatchObject({ count: 7 });
   });
   it("owns cancellation and rejects progress from a stopped worker", async () => {
     const { t, a, b, alice } = await setup();

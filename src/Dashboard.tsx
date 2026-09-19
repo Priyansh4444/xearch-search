@@ -4,6 +4,7 @@ import { api } from "../convex/_generated/api";
 import type { Doc } from "../convex/_generated/dataModel";
 import "./dashboard.css";
 import { indexingUnavailableMessage } from "./integrationStatus";
+import { describeError } from "./errors";
 import { jobLabel, jobSummary, jobWarnings } from "./jobText";
 
 function Job({ job }: { job: Doc<"jobs"> }) {
@@ -18,7 +19,7 @@ function Job({ job }: { job: Doc<"jobs"> }) {
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Action failed");
+      setError(describeError(e));
     }
   };
   const active = job.status === "queued" || job.status === "running";
@@ -144,7 +145,7 @@ export default function Dashboard({
                 });
                 setMessage("Import started. You can leave this page open or come back later.");
               } catch (e) {
-                setMessage(e instanceof Error ? e.message : "Could not start job.");
+                setMessage(describeError(e));
               } finally {
                 setBusy(false);
               }
