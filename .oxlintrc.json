@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/@effect/tsgo/oxlint-schema.json",
+  "extends": [
+    "./node_modules/@effect/tsgo/oxlint-presets/correctness.json",
+    "./node_modules/@effect/tsgo/oxlint-presets/antipattern.json",
+    "./node_modules/@effect/tsgo/oxlint-presets/effect-native.json",
+    "./node_modules/@effect/tsgo/oxlint-presets/style.json"
+  ],
+  "plugins": ["typescript", "unicorn", "oxc", "vitest", "react"],
+  "categories": { "correctness": "error" },
+  "ignorePatterns": [
+    "convex/_generated/**",
+    "dist/**",
+    ".convex/**",
+    ".local-captures/**",
+    ".agents/**"
+  ],
+  "rules": {
+    "vitest/no-conditional-expect": "off",
+    "effecttsgo/async-function": "off",
+    "effecttsgo/node-builtin-import": "off",
+    "effecttsgo/schema-number": "off"
+  },
+  "overrides": [
+    {
+      "files": [
+        "convex/**/*.ts",
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "tests/**/*.ts",
+        "tests/**/*.js",
+        "scripts/**/*.ts",
+        "scripts/**/*.mjs"
+      ],
+      "rules": {
+        "effecttsgo/global-console": "off",
+        "effecttsgo/global-date": "off",
+        "effecttsgo/new-promise": "off",
+        "effecttsgo/process-env": "off"
+      }
+    }
+  ]
+}

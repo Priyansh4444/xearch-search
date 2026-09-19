@@ -1,12 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import {
-  XmdClient,
-  retryDelay,
-  publicUrl,
-  type RawObject,
-} from "../convex/lib/xmd";
+import { XmdClient, retryDelay, publicUrl, type RawObject } from "../convex/lib/xmd";
 import { collectXmd, type CollectionRequest } from "../convex/lib/collect";
-import { deliverCapture, captureId, type Capture } from "../convex/lib/handoff";
+import { deliverCapture, captureId, type Capture, type Receipt } from "../convex/lib/handoff";
+
+function requestUrl(input: Parameters<typeof fetch>[0]) {
+  return input instanceof Request ? input.url : input.toString();
+}
 
 const profile = {
   id: "123",
@@ -37,12 +36,9 @@ const request: CollectionRequest = {
   input: "theo",
   format: "ndjson",
 };
-function client(
-  lines: RawObject[],
-  options: { noSummary?: boolean; userId?: string } = {},
-) {
+function client(lines: RawObject[], options: { noSummary?: boolean; userId?: string } = {}) {
   const fetcher = vi.fn<typeof fetch>(async (input) =>
-    String(input).includes("/posts?")
+    requestUrl(input).includes("/posts?")
       ? new Response(lines.map((x) => JSON.stringify(x)).join("\n") + "\n")
       : Response.json({
           resource: "profile",
@@ -53,7 +49,7 @@ function client(
 }
 function receiver() {
   const captures: Capture[] = [];
-  const sink = vi.fn(async (capture: Capture) => {
+  const sink = vi.fn<(capture: Capture) => Promise<Receipt>>(async (capture) => {
     captures.push(structuredClone(capture));
     return {
       captureId: await captureId(JSON.stringify(capture)),
@@ -61,7 +57,7 @@ function receiver() {
       durable: true as const,
     };
   });
-  return { captures, sink, ack: vi.fn(async () => {}) };
+  return { captures, sink, ack: vi.fn<() => Promise<void>>(async () => {}) };
 }
 describe("x.md raw acquisition handoff", () => {
   it("defaults backfills to JSON and preserves the complete newest-first envelope", async () => {
@@ -72,7 +68,7 @@ describe("x.md raw acquisition handoff", () => {
       future: { untouched: true },
     };
     const fetcher = vi.fn<typeof fetch>(async (input) =>
-      Response.json(String(input).includes("/posts?") ? envelope : { profile }),
+      Response.json(requestUrl(input).includes("/posts?") ? envelope : { profile }),
     );
     const r = receiver();
     const result = await collectXmd(
@@ -81,7 +77,7 @@ describe("x.md raw acquisition handoff", () => {
       r.sink,
       r.ack,
     );
-    const url = new URL(String(fetcher.mock.calls[1][0]));
+    const url = new URL(requestUrl(fetcher.mock.calls[1][0]));
     expect(url.searchParams.get("format")).toBe("json");
     expect(url.searchParams.get("refresh")).toBe("true");
     expect(r.captures.at(-1)?.records[0].payload).toEqual(envelope);
@@ -92,9 +88,7 @@ describe("x.md raw acquisition handoff", () => {
   it("retains malformed JSON history for review without declaring completion", async () => {
     const fetcher = vi.fn<typeof fetch>(async (input) =>
       Response.json(
-        String(input).includes("/posts?")
-          ? { profile, posts: [raw.post] }
-          : { profile },
+        requestUrl(input).includes("/posts?") ? { profile, posts: [raw.post] } : { profile },
       ),
     );
     const r = receiver();
@@ -112,7 +106,7 @@ describe("x.md raw acquisition handoff", () => {
   it("does not accept a changed identity in a JSON history response", async () => {
     const fetcher = vi.fn<typeof fetch>(async (input) =>
       Response.json(
-        String(input).includes("/posts?")
+        requestUrl(input).includes("/posts?")
           ? { profile: { ...profile, id: "456" }, posts: [], meta: {} }
           : { profile },
       ),
@@ -132,9 +126,7 @@ describe("x.md raw acquisition handoff", () => {
     const { xmd } = client([raw, terminal]);
     const r = receiver();
     const result = await collectXmd(xmd, request, r.sink, r.ack, () => 1234);
-    expect(
-      r.captures.flatMap((c) => c.records).find((r) => r.payload.post)?.payload,
-    ).toEqual(raw);
+    expect(r.captures.flatMap((c) => c.records).find((r) => r.payload.post)?.payload).toEqual(raw);
     expect(r.captures.at(-1)?.terminal).toBe("complete");
     expect(r.captures.at(-1)?.records.at(-1)?.payload).toEqual(terminal);
     expect(result.nextUntil).toBeUndefined();
@@ -146,9 +138,9 @@ describe("x.md raw acquisition handoff", () => {
   it("keeps a partial stream without declaring it complete", async () => {
     const { xmd } = client([raw]);
     const r = receiver();
-    await expect(collectXmd(xmd, request, r.sink, r.ack)).rejects.toMatchObject(
-      { code: "incomplete_stream" },
-    );
+    await expect(collectXmd(xmd, request, r.sink, r.ack)).rejects.toMatchObject({
+      code: "incomplete_stream",
+    });
     expect(r.captures.at(-1)?.terminal).toBe("partial");
     expect(r.captures.some((c) => c.terminal === "complete")).toBe(false);
     expect(r.captures.at(-1)?.records[0].payload).toEqual(raw);
@@ -163,30 +155,25 @@ describe("x.md raw acquisition handoff", () => {
     };
     const { xmd } = client([raw, problem]);
     const r = receiver();
-    await expect(collectXmd(xmd, request, r.sink, r.ack)).rejects.toMatchObject(
-      { code: "partial_import" },
-    );
+    await expect(collectXmd(xmd, request, r.sink, r.ack)).rejects.toMatchObject({
+      code: "partial_import",
+    });
     expect(r.captures.at(-1)?.records.at(-1)?.payload).toEqual(problem);
     expect(r.captures.at(-1)?.terminal).toBe("partial");
   });
   it("rejects records after a summary without acknowledging a complete run", async () => {
     const { xmd } = client([raw, terminal, raw]);
     const r = receiver();
-    await expect(collectXmd(xmd, request, r.sink, r.ack)).rejects.toMatchObject(
-      { code: "invalid_stream" },
-    );
+    await expect(collectXmd(xmd, request, r.sink, r.ack)).rejects.toMatchObject({
+      code: "invalid_stream",
+    });
     expect(r.captures.some((c) => c.terminal === "complete")).toBe(false);
   });
   it("retains a mismatched profile, then stops before reading the wrong account history", async () => {
     const { xmd, fetcher } = client([raw, terminal]);
     const r = receiver();
     await expect(
-      collectXmd(
-        xmd,
-        { ...request, expectedUserId: "different" },
-        r.sink,
-        r.ack,
-      ),
+      collectXmd(xmd, { ...request, expectedUserId: "different" }, r.sink, r.ack),
     ).rejects.toMatchObject({ code: "identity_mismatch" });
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(r.captures[0].records[0].payload.profile).toEqual(profile);
@@ -194,15 +181,13 @@ describe("x.md raw acquisition handoff", () => {
   it("pins numeric identity before importing even if the later stream fails", async () => {
     const { xmd } = client([raw]);
     const r = receiver();
-    const pin = vi.fn(async () => {});
-    await expect(
-      collectXmd(xmd, request, r.sink, r.ack, Date.now, pin),
-    ).rejects.toThrow();
+    const pin = vi.fn<() => Promise<void>>(async () => {});
+    await expect(collectXmd(xmd, request, r.sink, r.ack, Date.now, pin)).rejects.toThrow(Error);
     expect(pin).toHaveBeenCalledWith("123");
   });
   it("does not acknowledge a capture when the receiver rejects it", async () => {
     const { xmd } = client([raw, terminal]);
-    const ack = vi.fn(async () => {});
+    const ack = vi.fn<() => Promise<void>>(async () => {});
     await expect(
       collectXmd(
         xmd,
@@ -224,7 +209,7 @@ describe("x.md raw acquisition handoff", () => {
     };
     const xmd = new XmdClient(
       undefined,
-      vi.fn(async () => Response.json(response)),
+      vi.fn<typeof fetch>(async () => Response.json(response)),
     );
     const r = receiver();
     const result = await collectXmd(
@@ -238,64 +223,47 @@ describe("x.md raw acquisition handoff", () => {
     expect(r.captures[0].records[0].payload).toEqual(response);
   });
   it("decodes multibyte text across arbitrary NDJSON transport chunks", async () => {
-    const bytes = new TextEncoder().encode(
-      JSON.stringify(raw) + "\n" + JSON.stringify(terminal),
-    );
+    const bytes = new TextEncoder().encode(JSON.stringify(raw) + "\n" + JSON.stringify(terminal));
     const stream = new ReadableStream({
       start(c) {
-        for (let i = 0; i < bytes.length; i += 3)
-          c.enqueue(bytes.slice(i, i + 3));
+        for (let i = 0; i < bytes.length; i += 3) c.enqueue(bytes.slice(i, i + 3));
         c.close();
       },
     });
     const xmd = new XmdClient(
       undefined,
-      vi.fn(async () => new Response(stream)),
+      vi.fn<typeof fetch>(async () => new Response(stream)),
     );
     const events = [];
-    for await (const event of xmd.bulk("theo", { maxPosts: 500 }))
-      events.push(event);
+    for await (const event of xmd.bulk("theo", { maxPosts: 500 })) events.push(event);
     expect(events).toEqual([raw, terminal]);
   });
   it("supports both x.md origins, refresh, and bearer auth without URL credentials", async () => {
-    const fetcher = vi.fn<typeof fetch>(
-      async () => new Response(JSON.stringify(terminal)),
-    );
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(terminal)));
     const xmd = new XmdClient("secret", fetcher, "https://x.pcstyle.dev");
     for await (const _ of xmd.bulk("@theo", { maxPosts: 500, refresh: true })) {
       /* drain */
     }
     const [url, init] = fetcher.mock.calls[0];
-    expect(String(url)).toContain(
-      "https://x.pcstyle.dev/api/v1/profiles/theo/posts?",
-    );
-    expect(String(url)).toContain("refresh=true");
-    expect(String(url)).not.toContain("secret");
-    expect(new Headers(init?.headers).get("Authorization")).toBe(
-      "Bearer secret",
-    );
+    expect(requestUrl(url)).toContain("https://x.pcstyle.dev/api/v1/profiles/theo/posts?");
+    expect(requestUrl(url)).toContain("refresh=true");
+    expect(requestUrl(url)).not.toContain("secret");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer secret");
     expect(init?.redirect).toBe("error");
-    expect(
-      () => new XmdClient("secret", fetcher, "https://other.example"),
-    ).toThrow();
+    expect(() => new XmdClient("secret", fetcher, "https://other.example")).toThrow(Error);
   });
   it("reports a retryable rate limit and respects Retry-After", async () => {
     const xmd = new XmdClient(
       undefined,
-      vi.fn(async () =>
-        Response.json(
-          { code: "rate_limited" },
-          { status: 429, headers: { "Retry-After": "90" } },
-        ),
+      vi.fn<typeof fetch>(async () =>
+        Response.json({ code: "rate_limited" }, { status: 429, headers: { "Retry-After": "90" } }),
       ),
     );
     await expect(xmd.read("profile", "theo")).rejects.toMatchObject({
       retryable: true,
       retryAfter: 90_000,
     });
-    expect(
-      retryDelay("Thu, 01 Jan 2026 00:01:00 GMT", Date.parse("2026-01-01")),
-    ).toBe(60_000);
+    expect(retryDelay("Thu, 01 Jan 2026 00:01:00 GMT", Date.parse("2026-01-01"))).toBe(60_000);
   });
 });
 describe("durable handoff receipts", () => {
@@ -325,19 +293,10 @@ describe("durable handoff receipts", () => {
         }),
       );
     await expect(
-      deliverCapture(
-        "https://data.example/captures",
-        "data-token",
-        capture,
-        fetcher,
-      ),
+      deliverCapture("https://data.example/captures", "data-token", capture, fetcher),
     ).resolves.toMatchObject({ durable: true });
-    expect(fetcher.mock.calls[0][1]?.body).toEqual(
-      fetcher.mock.calls[1][1]?.body,
-    );
-    expect(fetcher.mock.calls[0][1]?.headers).toEqual(
-      fetcher.mock.calls[1][1]?.headers,
-    );
+    expect(fetcher.mock.calls[0][1]?.body).toEqual(fetcher.mock.calls[1][1]?.body);
+    expect(fetcher.mock.calls[0][1]?.headers).toEqual(fetcher.mock.calls[1][1]?.headers);
   });
   it.each([
     { durable: false, captureId: "wrong", receiptId: "ok" },
@@ -348,7 +307,7 @@ describe("durable handoff receipts", () => {
         "https://data.example/captures",
         undefined,
         capture,
-        vi.fn(async () => Response.json(response)),
+        vi.fn<typeof fetch>(async () => Response.json(response)),
       ),
     ).rejects.toMatchObject({ code: "invalid_receipt" });
   });
@@ -361,12 +320,7 @@ describe("durable handoff receipts", () => {
         }),
     );
     await expect(
-      deliverCapture(
-        "https://data.example/captures",
-        "secret",
-        capture,
-        fetcher,
-      ),
+      deliverCapture("https://data.example/captures", "secret", capture, fetcher),
     ).rejects.toMatchObject({ code: "handoff_rejected" });
     expect(fetcher.mock.calls[0][1]?.redirect).toBe("error");
   });
@@ -378,5 +332,5 @@ it.each([
   "https://user:secret@example.com",
   "https://box.internal",
 ])("blocks non-public web URLs: %s", (value) => {
-  expect(() => publicUrl(value)).toThrow();
+  expect(() => publicUrl(value)).toThrow(Error);
 });

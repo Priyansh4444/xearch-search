@@ -9,7 +9,7 @@ import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { sortValidator, postFields } from "./schema";
 import { parseQuery } from "./lib/search";
-import { searchResponse } from "./lib/results";
+import { decodeSearchResponse } from "./lib/results";
 import { serviceToken } from "./lib/serviceAuth";
 import { budget, user } from "./access";
 import type { Doc } from "./_generated/dataModel";
@@ -125,7 +125,7 @@ export const execute = internalAction({
         signal: AbortSignal.timeout(30_000),
       });
       if (!response.ok) throw new Error("Service unavailable");
-      const result = searchResponse.parse(await response.json());
+      const result = decodeSearchResponse(await response.json());
       await ctx.runMutation(internal.search.complete, { sessionId, ...result });
     } catch {
       await ctx.runMutation(internal.search.complete, {

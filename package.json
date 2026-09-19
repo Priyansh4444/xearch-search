@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prepare": "effect-tsgo patch --no-typescript --oxlint",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
     "worker:production": "bun scripts/production-worker.ts",
     "env:sync": "node scripts/sync-env.mjs",
     "capture:setup": "node scripts/setup-capture.mjs",
@@ -21,17 +24,21 @@
     "@convex-dev/static-hosting": "latest",
     "@firecrawl/firecrawl-convex": "latest",
     "convex": "^1.45.0",
+    "effect": "4.0.0-rc.112",
     "lucide-react": "latest",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@effect/tsgo": "0.44.0",
     "@types/node": "^26.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "latest",
     "convex-test": "latest",
+    "oxlint": "1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
     "typescript": "^5.9.0",
     "vite": "latest",
     "vitest": "latest"
