@@ -34,7 +34,6 @@
     "typescript/consistent-return": "off",
     "typescript/no-base-to-string": "off",
     "typescript/no-duplicate-type-constituents": "off",
-    "typescript/no-floating-promises": "off",
     "typescript/no-implied-eval": "off",
     "typescript/no-meaningless-void-operator": "off",
     "typescript/no-redundant-type-constituents": "off",

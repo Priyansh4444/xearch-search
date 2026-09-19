@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -306,7 +307,7 @@ export default function App() {
       for (const resolve of authWaiters.current.splice(0)) resolve();
     }
   }, [isAuthenticated]);
-  const ensureSession = async () => {
+  const ensureSession = useCallback(async () => {
     if (authReady.current) return;
     session.current ??= (async () => {
       await signIn("anonymous");
@@ -327,7 +328,7 @@ export default function App() {
       session.current = null;
     });
     await session.current;
-  };
+  }, [signIn]);
   const accountResults = useQuery(api.search.accounts);
   const accounts = accountResults ?? [];
   const configured = useQuery(api.integrations.configured);
