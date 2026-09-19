@@ -1,8 +1,10 @@
 # Production deployment
 
-App: https://utmost-kudu-321.convex.site
+VM frontend (private exe.dev proxy): https://exp-xearch.exe.xyz/
 
-Dashboard: https://utmost-kudu-321.convex.site/?dashboard=1
+Dashboard: https://exp-xearch.exe.xyz/?dashboard=1
+
+Hosted Convex frontend: https://utmost-kudu-321.convex.site
 
 Convex project: `xearch/xearch-next`. Deployment: `utmost-kudu-321` (production).
 
@@ -19,8 +21,68 @@ CONVEX_DEPLOYMENT=prod:utmost-kudu-321 bunx @convex-dev/static-hosting upload --
 
 AgentMail delivery events for the configured sender inbox are registered at `https://utmost-kudu-321.convex.site/agentmail/webhook`. The inbox-scoped API succeeded; the organization-level create route rejected the key. `AGENTMAIL_WEBHOOK_SECRET` is configured in production. Incoming email processing is not registered. No email was sent during setup.
 
-Production imports use an outbound worker on the Mac. Run `bun run capture` and `bun run worker:production` in separate terminals. The worker authenticates to production with `.local-captures/worker-token`, claims one due job at a time, downloads directly from x.md, and saves to the private loopback receiver. Only job metadata and receipts return to Convex. No inbound port or public tunnel is used. Keep the Mac awake; the UI marks the worker offline within 45 seconds without a heartbeat. `scripts/setup-worker.mjs` configures its production credential without printing it.
+Production imports use an outbound worker. The VM worker unit is installed but was inactive at the September 19 cleanup check; the frontend and capture receiver were active. This does not confirm whether the old Mac worker has stopped. Follow the coordinated cutover steps below before starting the VM worker. The worker authenticates to production with `.local-captures/worker-token`, claims one due job at a time, downloads directly from x.md, and saves to the private loopback receiver. Only job metadata and receipts return to Convex. No inbound port or public tunnel is used. The UI marks the worker offline within 45 seconds without a heartbeat. `scripts/setup-worker.mjs` configures its production credential without printing it.
 
 Search remains disconnected until the collaborator provides retrieval. Firecrawl and OpenAI settings are configured, but paid calls have not been live-tested in production. Email sending requires a verified email identity; the current guest-only login cannot send production email.
 
 Verified public HTML/assets, production guest authentication plus saved-search create/read/remove, and one real production profile download through the outbound worker with a durable local receipt. Browser visual checks were unavailable during deployment.
+
+## VM services
+
+The VM runs the static frontend and raw capture receiver and, after a coordinated
+cutover from the Mac, the outbound production worker as user-level systemd
+services. Convex stays on the existing hosted production deployment. These
+services do not host a development server, Convex, Elasticsearch, or another
+search engine.
+
+Install the unit files from the repository and create the private log directory:
+
+```sh
+install -d -m 700 ~/.config/systemd/user .local-captures/logs
+install -m 600 deploy/systemd/xearch-capture.service ~/.config/systemd/user/
+install -m 600 deploy/systemd/xearch-production-worker.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now xearch-capture.service
+```
+
+Do not enable or start `xearch-production-worker.service` until the Mac worker is
+confirmed stopped and any final capture sync is complete. At cutover:
+
+```sh
+systemctl --user enable --now xearch-production-worker.service
+```
+
+Build the frontend against the existing production Convex deployment without
+editing the existing environment files, then install its service:
+
+```sh
+VITE_CONVEX_URL=https://utmost-kudu-321.convex.cloud bun run build
+install -d -m 700 .local-hosting/logs
+install -m 600 deploy/systemd/xearch-frontend.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now xearch-frontend.service
+```
+
+The frontend listens on port 8080 for the exe.dev HTTPS proxy. Configure the
+documented private proxy with `ssh exe.dev share port exp-xearch 8080`. Do not
+make the proxy public without an explicit launch decision. The resulting private
+URL is `https://exp-xearch.exe.xyz/`.
+
+All services restart automatically. The receiver listens only on
+`127.0.0.1:4319`. Worker/capture logs are written beneath
+`.local-captures/logs/`; nginx logs are under `.local-hosting/logs/`. These
+directories and their files must remain owner-only. Inspect status without
+printing credentials:
+
+```sh
+systemctl --user status xearch-capture.service
+systemctl --user status xearch-production-worker.service
+systemctl --user status xearch-frontend.service
+curl --fail --silent http://127.0.0.1:4319/health
+curl --fail --silent http://127.0.0.1:8080/
+ss -ltnp 'sport = :4319'
+```
+
+The committed units are specific to the `exedev` checkout path on this VM. If the
+repository or Bun executable moves, update both the committed and installed
+units together.

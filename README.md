@@ -1,9 +1,15 @@
 # Xearch
 
-Rewrite coordination: this is now the shared app repository. Prronsh owns the
-local indexer and Elasticsearch work; the application keeps Convex orchestration
-and provider integrations. See [rewrite foundations](docs/rewrite-foundations.md)
-for the imported lint rules, Effect validation, and integration boundaries.
+This is the shared app repository. Prronsh owns the local indexer and
+Elasticsearch work; the application keeps Convex orchestration and provider
+integrations. See the [integration contract](docs/integration-contract.md) for
+the acquisition and retrieval boundaries.
+
+The production VM serves the frontend at https://exp-xearch.exe.xyz/ through the
+private exe.dev proxy. Convex remains on `prod:utmost-kudu-321`. See
+[production operations](docs/production.md) for deployment and service setup.
+Local-development instructions below are for an explicitly isolated checkout,
+not routine setup on the production VM.
 
 ## Local import dashboard
 
@@ -31,7 +37,7 @@ Search X posts, import account histories through x.md, and read the pages behind
 - [Contract for the data-service owner](docs/integration-contract.md)
 - [Hackathon build evidence](hackathon.md)
 
-The previous [Xearch project](https://github.com/Priyansh4444/xearch) was used as an architecture reference. Its checkout is not included in this repository.
+The previous [Xearch project](https://github.com/Priyansh4444/xearch) was used as an architecture reference. Its local reference checkout is preserved in `xearch-old/` and ignored by Git.
 
 ## Hackathon build log
 
@@ -81,14 +87,22 @@ The UI exposes account imports, search, and conversation collection. The same `j
 ## Verify
 
 ```sh
+bun run lint
+bun run typecheck
 bun run test
-bun run build
+bunx vite build --outDir "$(mktemp -d /tmp/xearch-build.XXXXXX)"
 ```
+
+Build verification uses a temporary directory so it cannot overwrite the live VM frontend in `dist/`.
+
+Oxlint runs type-aware checks with the Effect presets; `prepare` patches Oxlint
+and tsgolint on install. Search-service responses are decoded with Effect Schema
+in `convex/lib/results.ts`; other validators still use Zod.
 
 Tests cover raw payload preservation, JSON backfill pagination, safe unordered-stream behavior, stream completion, partial capture, identity pinning, origin selection, retry timing, durable receipts, user isolation, and the Firecrawl component response shape. Provider calls are mocked in tests. No email is sent and no provider credits are consumed by the suite. Selected ideas and remaining work from the supplied local-first spec are tracked in [spec adoption](docs/spec-adoption.md).
 
 ## Hosting and current limits
 
-The static-hosting Convex component is registered with root routing while auth and webhook routes remain intact. `bun run deploy` invokes its deployment workflow after a cloud project is configured. This has not been deployed or submitted. Before publishing, configure cloud auth keys and `SITE_URL` with the public address, provider credentials, both data-service endpoints, and AgentMail webhook verification; then test a real import, a search, a crawl, and a deliberate digest delivery.
+The static-hosting Convex component is registered with root routing while auth and webhook routes remain intact. `bun run deploy` invokes its deployment workflow after a cloud project is configured. The existing hosted deployment and VM frontend are documented in [production operations](docs/production.md). Public launch still requires connected search, durable sign-in, verified email recipients, and explicitly approved live integration checks.
 
 Guest sessions let judges use the app without an invite. Saved state belongs to that browser session; clearing its credentials loses access. Per-session and global daily provider budgets bound usage. Guest sessions are not verified email identities: a public launch should add durable sign-in and a verified-recipient policy for email. Indexing is provider acquisition plus acknowledged raw handoff; the app does not claim that downstream normalization or indexing finished. Search pages are short-lived UI snapshots, not a local corpus. Only the temporary raw-file receiver is included; the collaborator owns the actual corpus/indexing server.
