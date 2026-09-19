@@ -32,6 +32,8 @@ pub struct Receipt {
 ///
 /// # Errors
 /// Returns I/O, malformed envelope or sink errors. No receipt is written on failure.
+/// If import fails before `sink.commit()`, the sink can hold uncommitted upserts
+/// from this run. The caller must discard the sink and must not reuse or commit it.
 pub fn import(input: &Path, archive: &Path, sink: &mut dyn IndexSink) -> Result<Receipt> {
     std::fs::create_dir_all(archive).map_err(storage)?;
     let mut source = File::open(input)
@@ -72,12 +74,17 @@ pub fn import(input: &Path, archive: &Path, sink: &mut dyn IndexSink) -> Result<
         sink,
         receipt: &mut receipt,
         quarantine: &mut quarantine,
+        failure: None,
     };
     let mut deserializer =
         serde_json::Deserializer::from_reader(BufReader::new(File::open(&raw).map_err(storage)?));
-    Envelope(&mut context)
-        .deserialize(&mut deserializer)
-        .map_err(|e| Error::Invalid(e.to_string()))?;
+    let parsed = Envelope(&mut context).deserialize(&mut deserializer);
+    // A sink or quarantine failure halts parsing through the serde boundary;
+    // report it as itself rather than as malformed input.
+    if let Some(error) = context.failure.take() {
+        return Err(error);
+    }
+    parsed.map_err(|e| Error::Invalid(e.to_string()))?;
     deserializer
         .end()
         .map_err(|e| Error::Invalid(e.to_string()))?;
@@ -102,10 +109,27 @@ struct Context<'a> {
     sink: &'a mut dyn IndexSink,
     receipt: &'a mut Receipt,
     quarantine: &'a mut dyn Write,
+    failure: Option<Error>,
+}
+
+/// Placeholder carried across the serde boundary while the real error waits in `Context`.
+struct Halted;
+impl fmt::Display for Halted {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("import halted by a storage failure")
+    }
 }
 
 impl Context<'_> {
-    fn record(&mut self, value: &Value) -> Result<()> {
+    fn record(&mut self, value: &Value) -> std::result::Result<(), Halted> {
+        if let Err(error) = self.try_record(value) {
+            self.failure = Some(error);
+            return Err(Halted);
+        }
+        Ok(())
+    }
+
+    fn try_record(&mut self, value: &Value) -> Result<()> {
         match normalize(value) {
             Ok(post) => {
                 self.sink.upsert(&post)?;

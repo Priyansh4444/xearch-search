@@ -72,3 +72,28 @@ fn malformed_envelope_does_not_publish_partial_index() {
             .is_empty()
     );
 }
+
+struct FailingSink;
+impl search_backend::IndexSink for FailingSink {
+    fn upsert(&mut self, _: &search_model::Post) -> search_model::Result<()> {
+        Err(search_model::Error::Storage("disk full".into()))
+    }
+    fn commit(&mut self) -> search_model::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn sink_failure_is_reported_as_storage_not_invalid_input() {
+    let root = tempfile::tempdir().unwrap();
+    let mut input = tempfile::NamedTempFile::new().unwrap();
+    let good = serde_json::json!({"id":"123", "text":"to be", "author":{"id":"7", "screen_name":"Alice"}, "likes":0, "created_timestamp":1_700_000_000});
+    write!(input, "{}", serde_json::json!({"posts":[good]})).unwrap();
+    let error = search_ingest::import(input.path(), &root.path().join("raw"), &mut FailingSink)
+        .unwrap_err();
+    assert!(
+        matches!(error, search_model::Error::Storage(_)),
+        "sink error was flattened: {error}"
+    );
+    assert_eq!(error.to_string(), "Search storage failed: disk full");
+}
