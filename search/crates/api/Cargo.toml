@@ -1,0 +1,23 @@
+[package]
+name = "search-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[lints]
+workspace = true
+[dependencies]
+search-model.workspace = true
+search-query.workspace = true
+search-backend.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+axum.workspace = true
+tokio.workspace = true
+jiff.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+hex.workspace = true
+[dev-dependencies]
+search-tantivy.workspace = true
+tempfile.workspace = true
+tower = { version = "0.5", features = ["util"] }
