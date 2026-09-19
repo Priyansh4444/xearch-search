@@ -190,12 +190,10 @@ fn truncate(text: &mut String, limit: usize) -> bool {
         units = units.saturating_add(c.len_utf16());
         (units > limit).then_some(offset)
     });
-    if let Some(boundary) = boundary {
+    boundary.is_some_and(|boundary| {
         text.truncate(boundary);
         true
-    } else {
-        false
-    }
+    })
 }
 
 async fn search(
