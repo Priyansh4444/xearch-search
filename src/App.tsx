@@ -635,7 +635,7 @@ export default function App() {
             </div>
           )}
           {home && (
-            <div className="library-status">
+            <div className="library-status" aria-live="polite">
               {libraryLoading ? (
                 <>
                   <span className="status-dot loading" />
