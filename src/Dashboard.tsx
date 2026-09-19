@@ -3,6 +3,7 @@ import { useConvexAuth, useConvexConnectionState, useMutation, useQuery } from "
 import { api } from "../convex/_generated/api";
 import type { Doc } from "../convex/_generated/dataModel";
 import "./dashboard.css";
+import { indexingUnavailableMessage } from "./integrationStatus";
 import { jobLabel, jobSummary, jobWarnings } from "./jobText";
 
 function Job({ job }: { job: Doc<"jobs"> }) {
@@ -205,11 +206,7 @@ export default function Dashboard({
                   : "Start download"}
             </button>
             {config && !config.indexing && (
-              <p role="status">
-                {config.collectorMode === "outbound"
-                  ? "The download worker on your Mac is offline. Imports will be available when it reconnects."
-                  : "Downloads are unavailable because file saving is not connected."}
-              </p>
+              <p role="status">{indexingUnavailableMessage(config)}</p>
             )}
             <p role="status">{message}</p>
           </form>

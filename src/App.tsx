@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { ConvexError } from "convex/values";
 import Dashboard from "./Dashboard";
+import { indexingUnavailableMessage } from "./integrationStatus";
 import { jobLabel, jobSummary, jobWarnings } from "./jobText";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
@@ -883,11 +884,8 @@ export default function App() {
               <Download size={16} />
               Import posts
             </button>
-            {!configured?.indexing && (
-              <p className="config-warning">
-                Indexing needs an x.md key and a raw-capture receiver. Configure both in
-                Connections.
-              </p>
+            {configured && !configured.indexing && (
+              <p className="config-warning">{indexingUnavailableMessage(configured)}</p>
             )}
           </form>
           <div className="jobs">
