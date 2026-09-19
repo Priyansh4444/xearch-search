@@ -6,6 +6,13 @@ set -euo pipefail
 CODE=${XEARCH_CODE:-/home/exedev/xearch-worker}
 DATA=${XEARCH_DATA:-/home/exedev/xearch-data}
 UNITS="$HOME/.config/systemd/user"
+# One updater at a time: the timer and a manual run must never restart
+# services underneath each other.
+exec 9>"$DATA/update.lock"
+if ! flock -n 9; then
+  echo "another update is running; skipping"
+  exit 0
+fi
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 cd "$CODE"
 before=$(git rev-parse HEAD)
@@ -27,7 +34,12 @@ systemctl --user enable -q xearch-capture xearch-production-worker xearch-search
 systemctl --user restart xearch-capture xearch-search xearch-production-worker xearch-frontend
 systemctl --user start xearch-reindex.timer xearch-reindex.path xearch-update.timer
 "$CODE/scripts/reindex.sh"
+# systemctl restart returns before a service binds; give each one up to 30s.
 for port in 4319 4320 4321; do
-  curl -fsS --max-time 5 "http://127.0.0.1:$port/health" >/dev/null || { echo "health failed on :$port"; exit 1; }
+  for _ in $(seq 1 30); do
+    curl -fsS --max-time 2 "http://127.0.0.1:$port/health" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  curl -fsS --max-time 2 "http://127.0.0.1:$port/health" >/dev/null || { echo "health failed on :$port"; exit 1; }
 done
 echo "updated ${before:0:7} -> ${after:0:7}; capture, search, edge healthy"
