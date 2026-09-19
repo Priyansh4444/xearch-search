@@ -14,7 +14,7 @@
 //!       "rejected": 0,
 //!       "sha256": "ab12…",
 //!       "lastError": null,
-//!       "fileSig": "52341:1758000000000",
+//!       "fileSig": "ab12…",
 //!       "updatedAtMs": 1758000000000
 //!     }
 //!   }
@@ -83,7 +83,8 @@ pub struct UserRecord {
     /// Reason for the last failure; `None` while complete.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
-    /// `size:mtime` of the last imported file; cleared to force reimport.
+    /// SHA-256 content hash of the last imported file; cleared to force
+    /// reimport.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_sig: Option<String>,
     /// Drop filename backing the last import, so two files normalizing to

@@ -5,8 +5,8 @@
 //! incomplete, or error. Imports stay idempotent:
 //! [`search_ingest::import`] retains exact input bytes under a
 //! content-addressed archive name and converges on reimport, so a crash
-//! between passes is safe to replay. A single writer lock owned per pass
-//! serializes with one-shot `import` invocations.
+//! between passes is safe to replay. One writer lock is held per file, so a
+//! one-shot `import` can interleave between files of the same pass.
 //!
 //! All directories come from the caller (CLI flags or `SEARCH_*`
 //! environment); nothing here assumes which machine it runs on.

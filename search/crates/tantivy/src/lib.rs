@@ -271,17 +271,18 @@ impl SearchBackend for Engine {
             (0, now)
         };
         let query = self.compile(expression)?;
-        let collector = TopDocs::with_limit(request.limit.saturating_add(1))
+        let page_limit = request.limit.min(MAX_WINDOW.saturating_sub(offset));
+        let collector = TopDocs::with_limit(page_limit.saturating_add(1))
             .and_offset(offset)
             .order_by(scoring::Ranking {
                 sort: request.sort,
                 now,
             });
         let hits = searcher.search(&query, &collector).map_err(storage)?;
-        let more = hits.len() > request.limit;
+        let more = hits.len() > page_limit;
         let rows = hits
             .into_iter()
-            .take(request.limit)
+            .take(page_limit)
             .map(|(_, address)| {
                 let document = searcher.doc::<TantivyDocument>(address).map_err(storage)?;
                 let raw = document
@@ -292,7 +293,6 @@ impl SearchBackend for Engine {
             })
             .collect::<Result<Vec<Post>>>()?;
         let next_offset = offset.saturating_add(rows.len());
-        let at_window = offset.saturating_add(request.limit) >= MAX_WINDOW;
         let next_cursor = if more && next_offset < MAX_WINDOW {
             Some(
                 serde_json::to_string(&Cursor {
@@ -305,12 +305,7 @@ impl SearchBackend for Engine {
         } else {
             None
         };
-        // When this page sits within one page of the window edge, a short
-        // final page may be the window cut short rather than a real end of
-        // results — say so instead of dropping the remainder silently.
-        let warnings = if more && next_offset >= MAX_WINDOW
-            || (!more && at_window && rows.len() < request.limit)
-        {
+        let warnings = if more && next_offset >= MAX_WINDOW {
             vec!["Result window capped at 10,000. Narrow your query.".into()]
         } else {
             Vec::new()

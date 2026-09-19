@@ -13,7 +13,7 @@
 #   2. Install this unit:         cp deploy/systemd/xearch-search-indexer.service ~/.config/systemd/user/
 #   3. Point BASE at your data root if you don't use the default (edit the
 #      Environment=SEARCH_BASE_DIR line, or `systemctl --user edit` an override).
-#   4. mkdir -p "$BASE"/{index,archive,drop,state,logs}
+#   4. mkdir -p "$BASE"/{index,archive,drop,state,logs}  # Required before start: systemd opens append logs before running any processes
 #   5. systemctl --user daemon-reload
 #
 # Do NOT enable/start without approval from the operator of the machine.

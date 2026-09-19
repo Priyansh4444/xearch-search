@@ -7,17 +7,17 @@ imports only read local dump files.
 
 ## Crates
 
-| Crate | Role |
-|---|---|
-| `search-model` | Wire types: `Post`, `SearchRequest`/`SearchResponse`, `Sort` |
-| `search-query` | Google-style grammar → `Expr` AST; rejects conflicting author filters |
-| `search-ranking` | Engagement + blend math used for sort keys |
-| `search-backend` | Traits only: `SearchBackend` (search) and `IndexSink` (upsert+commit) |
-| `search-tantivy` | The index. mmap Tantivy store, cursors, five sorts |
-| `search-ingest` | Retain-import: archive, quarantine, receipt, idempotent upserts |
-| `search-indexer` | Drop-dir watcher + per-user retry registry (`users.json`) |
-| `search-api` | Loopback HTTP: bearer `/search`, HMAC `/ticket-search`, signed cursors |
-| `xearch-search` | The binary: `import`, `query`, `serve`, `watch`, `users` |
+| Crate            | Role                                                                   |
+| ---------------- | ---------------------------------------------------------------------- |
+| `search-model`   | Wire types: `Post`, `SearchRequest`/`SearchResponse`, `Sort`           |
+| `search-query`   | Google-style grammar → `Expr` AST; rejects conflicting author filters  |
+| `search-ranking` | Engagement + blend math used for sort keys                             |
+| `search-backend` | Traits only: `SearchBackend` (search) and `IndexSink` (upsert+commit)  |
+| `search-tantivy` | The index. mmap Tantivy store, cursors, five sorts                     |
+| `search-ingest`  | Retain-import: archive, quarantine, receipt, idempotent upserts        |
+| `search-indexer` | Drop-dir watcher + per-user retry registry (`users.json`)              |
+| `search-api`     | Loopback HTTP: bearer `/search`, HMAC `/ticket-search`, signed cursors |
+| `xearch-search`  | The binary: `import`, `query`, `serve`, `watch`, `users`               |
 
 ## Where postings actually live
 
@@ -51,31 +51,35 @@ Every intake account is one record, keyed by normalized handle
 (lowercase, `@` stripped, `1–15` ASCII alnum/`_`):
 
 ```json
-{"version": 1, "users": {
-  "hero": {
-    "status": "complete",
-    "attempts": 1,
-    "accepted": 2,
-    "rejected": 0,
-    "sha256": "f39540…",
-    "fileSig": "f39540…",     // sha256 of file bytes (== sha256 for first import)
-    "fileName": "hero.json",
-    "updatedAtMs": 1789826880797
-}}}
+{
+  "version": 1,
+  "users": {
+    "hero": {
+      "status": "complete",
+      "attempts": 1,
+      "accepted": 2,
+      "rejected": 0,
+      "sha256": "f39540…",
+      "fileSig": "f39540…", // sha256 of file bytes (== sha256 for first import)
+      "fileName": "hero.json",
+      "updatedAtMs": 1789826880797
+    }
+  }
+}
 ```
 
 Status machine, applied by every pass:
 
-| Situation | Result |
-|---|---|
-| New file seen | record starts `incomplete` |
-| Import accepts ≥1 post | `complete` with receipt facts |
-| Import accepts 0 posts (or all quarantined) | `error` — "No posts accepted; N quarantined" |
-| Import fails (malformed/IO) | `error` with reason, attempts+1 |
-| `error`/`incomplete` user | retried on every subsequent pass |
-| `complete` user, unchanged bytes | skipped (content-hash signature) |
-| File bytes changed | reimported even if `complete` |
-| Two files map to one handle | the second file is skipped with a warning until the collision is removed |
+| Situation                                   | Result                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------ |
+| New file seen                               | record starts `incomplete`                                               |
+| Import accepts ≥1 post                      | `complete` with receipt facts                                            |
+| Import accepts 0 posts (or all quarantined) | `error` — "No posts accepted; N quarantined"                             |
+| Import fails (malformed/IO)                 | `error` with reason, attempts+1                                          |
+| `error`/`incomplete` user                   | retried on every subsequent pass                                         |
+| `complete` user, unchanged bytes            | skipped (content-hash signature)                                         |
+| File bytes changed                          | reimported even if `complete`                                            |
+| Two files map to one handle                 | the second file is skipped with a warning until the collision is removed |
 
 Safety properties:
 
@@ -125,14 +129,14 @@ Precedence is flag > env > derived-from-`--base-dir`. All `SEARCH_*` env
 names mirror the flags, so a systemd unit or shell profile can carry the
 whole configuration.
 
-| Command | Flags/env |
-|---|---|
-| `--index`/`SEARCH_INDEX` | overrides `"$BASE/index"` |
-| `import --input --archive` | one-shot retained import |
-| `query <q> [--sort …]` | prints version-1 response JSON |
-| `serve [--listen 127.0.0.1:4320]` | needs `SEARCH_LOCAL_SIGNING_KEY` + `SEARCH_SERVICE_TOKEN` |
+| Command                                                | Flags/env                                                 |
+| ------------------------------------------------------ | --------------------------------------------------------- |
+| `--index`/`SEARCH_INDEX`                               | overrides `"$BASE/index"`                                 |
+| `import --input --archive`                             | one-shot retained import                                  |
+| `query <q> [--sort …]`                                 | prints version-1 response JSON                            |
+| `serve [--listen 127.0.0.1:4320]`                      | needs `SEARCH_LOCAL_SIGNING_KEY` + `SEARCH_SERVICE_TOKEN` |
 | `watch [--archive --drop-dir --state-dir --poll-secs]` | background indexer; resolves and logs its dirs at startup |
-| `users list [--status …]` / `users mark …` | registry ops |
+| `users list [--status …]` / `users mark …`             | registry ops                                              |
 
 ## Serving the app contract
 

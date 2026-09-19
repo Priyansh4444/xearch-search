@@ -38,11 +38,14 @@ PIDFILE="$BASE/indexer.pid"
 
 build() {
   local dir="debug"
-  [[ "$BIN" == *"/release/"* ]] && dir="release"
+  local -a profile=()
+  if [[ "$BIN" == *"/release/"* ]]; then
+    dir="release"
+    profile=(--release)
+  fi
   if [[ ! -x "$BIN" ]] || ! "$BIN" --help 2>/dev/null | grep -q "base-dir"; then
     echo "building xearch-search ($dir)..." >&2
-    (cd "$REPO/search" && cargo build -q -p xearch-search --profile "$dir" 2>/dev/null \
-      || (cd "$REPO/search" && cargo build -q -p xearch-search))
+    (cd "$REPO/search" && cargo build -q -p xearch-search "${profile[@]}")
   fi
 }
 

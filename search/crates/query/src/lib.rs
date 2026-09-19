@@ -57,67 +57,91 @@ pub fn parse(raw: &str, author: Option<&str>) -> Result<Expr> {
         return invalid("Search one author at a time, or remove the @ filters.");
     }
     match request_author {
-        // An empty reachable set means the query itself filters no author,
-        // so the request-level handle combines cleanly.
-        Some(handle) if analysis.possible.contains(&handle) => Ok(expression),
-        Some(handle) if analysis.possible.is_empty() => {
-            Ok(Expr::And(vec![expression, Expr::Author(handle)]))
+        Some(handle) => {
+            let already_covered = !analysis.paths.is_empty()
+                && analysis.paths.iter().all(|path| path.contains(&handle));
+            let mut paths = analysis.paths;
+            let mut conflict = analysis.conflict;
+            for path in &mut paths {
+                path.insert(handle.clone());
+                if path.len() > 1 {
+                    conflict = true;
+                }
+            }
+            if conflict {
+                return invalid("Search one author at a time, or remove the @ filters.");
+            }
+            if already_covered {
+                Ok(expression)
+            } else {
+                Ok(Expr::And(vec![expression, Expr::Author(handle)]))
+            }
         }
-        Some(_) => invalid("Search one author at a time, or remove the @ filters."),
         None => Ok(expression),
     }
 }
 
-/// Authors reachable on one conjunctive path, and whether any single path
-/// already requires two distinct authors. An `Or` splits independent paths;
-/// an `And` combines one path from every child, so two children conflict as
-/// soon as their reachable sets span distinct authors. `Not` keeps the
-/// filtered path, since a negated author still restricts results.
+/// Authors reachable on each conjunctive path, and whether any single path
+/// requires two distinct authors. An `Or` splits independent paths; an `And`
+/// combines paths across its children. `Not` keeps the filtered path, since
+/// a negated author still restricts results.
 struct AuthorAnalysis {
-    possible: std::collections::BTreeSet<String>,
+    paths: Vec<std::collections::BTreeSet<String>>,
     conflict: bool,
 }
 
 fn analyze_authors(expr: &Expr) -> AuthorAnalysis {
-    let mut possible = std::collections::BTreeSet::new();
-    let conflict;
     match expr {
-        Expr::Author(handle) => {
-            possible.insert(handle.clone());
-            conflict = false;
-        }
-        Expr::Term(_) | Expr::Phrase(_) | Expr::Since(_) | Expr::Until(_) => conflict = false,
-        Expr::Not(child) => {
-            let inner = analyze_authors(child);
-            possible = inner.possible;
-            conflict = inner.conflict;
-        }
+        Expr::Author(handle) => AuthorAnalysis {
+            paths: vec![std::collections::BTreeSet::from([handle.clone()])],
+            conflict: false,
+        },
+        Expr::Term(_) | Expr::Phrase(_) | Expr::Since(_) | Expr::Until(_) => AuthorAnalysis {
+            paths: vec![std::collections::BTreeSet::new()],
+            conflict: false,
+        },
+        Expr::Not(child) => analyze_authors(child),
         Expr::Or(children) => {
-            let mut any_conflict = false;
+            let mut paths = Vec::new();
+            let mut conflict = false;
             for child in children {
                 let inner = analyze_authors(child);
-                possible.extend(inner.possible);
-                any_conflict = any_conflict || inner.conflict;
+                conflict = conflict || inner.conflict;
+                for p in inner.paths {
+                    if !paths.contains(&p) {
+                        paths.push(p);
+                    }
+                }
             }
-            conflict = any_conflict;
+            if paths.is_empty() {
+                paths.push(std::collections::BTreeSet::new());
+            }
+            AuthorAnalysis { paths, conflict }
         }
         Expr::And(children) => {
-            let analyzed: Vec<AuthorAnalysis> = children.iter().map(analyze_authors).collect();
-            let cross_conflict = analyzed.windows(2).any(|pair| match pair {
-                [left, right] => {
-                    !left.possible.is_empty()
-                        && !right.possible.is_empty()
-                        && left.possible.union(&right.possible).count() > 1
+            let mut paths = vec![std::collections::BTreeSet::new()];
+            let mut conflict = false;
+            for child in children {
+                let inner = analyze_authors(child);
+                conflict = conflict || inner.conflict;
+                let mut combined = Vec::new();
+                for existing in &paths {
+                    for child_path in &inner.paths {
+                        let mut merged = existing.clone();
+                        merged.extend(child_path.iter().cloned());
+                        if merged.len() > 1 {
+                            conflict = true;
+                        }
+                        if !combined.contains(&merged) {
+                            combined.push(merged);
+                        }
+                    }
                 }
-                _ => false,
-            });
-            conflict = analyzed.iter().any(|inner| inner.conflict) || cross_conflict;
-            for inner in &analyzed {
-                possible.extend(inner.possible.iter().cloned());
+                paths = combined;
             }
+            AuthorAnalysis { paths, conflict }
         }
     }
-    AuthorAnalysis { possible, conflict }
 }
 
 /// Normalize a source handle without conflating it with numeric author identity.
@@ -321,15 +345,22 @@ mod tests {
 
     #[test]
     fn conflicting_authors_rejected_but_single_path_ok() {
-        for query in ["from:a from:b", "@a @b", "(from:a OR from:b) from:c"] {
+        for query in [
+            "from:a from:b",
+            "from:a rust from:b",
+            "@a @b",
+            "(from:a OR from:b) from:c",
+        ] {
             assert!(parse(query, None).is_err(), "{query}");
         }
         // One author per conjunctive path is fine.
         assert!(parse("from:a OR from:b", None).is_ok());
         // Request-level author conflicts with an in-query author.
         assert!(parse("from:a", Some("b")).is_err());
+        assert!(parse("from:a OR from:b", Some("a")).is_err());
         // Request author matching the in-query author is accepted once.
         assert!(parse("from:a", Some("a")).is_ok());
+        assert!(parse("from:a OR rust", Some("a")).is_ok());
         // A negated author is still an author filter on the same path.
         assert!(parse("-from:a from:b", None).is_err());
     }
