@@ -1,0 +1,39 @@
+{
+  "name": "xearch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "worker:production": "bun scripts/production-worker.ts",
+    "env:sync": "node scripts/sync-env.mjs",
+    "capture:setup": "node scripts/setup-capture.mjs",
+    "capture": "node scripts/capture-server.mjs",
+    "dev": "vite --host 0.0.0.0",
+    "backend": "convex dev",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "deploy": "bunx @convex-dev/static-hosting deploy"
+  },
+  "dependencies": {
+    "@agentmail/convex": "latest",
+    "@convex-dev/auth": "latest",
+    "@convex-dev/static-hosting": "latest",
+    "@firecrawl/firecrawl-convex": "latest",
+    "convex": "^1.45.0",
+    "lucide-react": "latest",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "latest",
+    "convex-test": "latest",
+    "typescript": "^5.9.0",
+    "vite": "latest",
+    "vitest": "latest"
+  }
+}

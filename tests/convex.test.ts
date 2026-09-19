@@ -1,0 +1,479 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { convexTest } from "convex-test";
+import firecrawlTest from "@firecrawl/firecrawl-convex/test";
+import schema from "../convex/schema";
+import { api, internal } from "../convex/_generated/api";
+const modules = import.meta.glob("../convex/**/*.ts");
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+async function setup() {
+  const t = convexTest(schema, modules);
+  const [alice, bob] = await t.run(async (ctx) => [
+    await ctx.db.insert("users", { isAnonymous: true }),
+    await ctx.db.insert("users", { isAnonymous: true }),
+  ]);
+  return {
+    t,
+    alice,
+    bob,
+    a: t.withIdentity({ subject: `${alice}|session` }),
+    b: t.withIdentity({ subject: `${bob}|session` }),
+  };
+}
+describe("Convex application boundaries", () => {
+  it("rejects an unauthorized production worker", async () => {
+    const { t } = await setup();
+    vi.stubEnv("COLLECTOR_MODE", "outbound");
+    vi.stubEnv("COLLECTOR_TOKEN", "test-worker-secret");
+    await expect(t.action(api.worker.poll, { token: "wrong" })).rejects.toThrow(
+      "authentication failed",
+    );
+    expect(await t.run((ctx) => ctx.db.query("collector").collect())).toEqual(
+      [],
+    );
+  });
+  it("leases only one due job to the outbound worker", async () => {
+    const { t, alice } = await setup();
+    vi.stubEnv("COLLECTOR_MODE", "outbound");
+    vi.stubEnv("COLLECTOR_TOKEN", "test-worker-secret");
+    const ids = await t.run(async (ctx) => {
+      const base = {
+        owner: alice,
+        kind: "profile" as const,
+        status: "queued" as const,
+        count: 0,
+        attempt: 0,
+        refresh: false,
+        warnings: [],
+        updatedAt: Date.now(),
+      };
+      return [
+        await ctx.db.insert("jobs", {
+          ...base,
+          input: "later",
+          readyAt: Date.now() + 60000,
+        }),
+        await ctx.db.insert("jobs", { ...base, input: "now" }),
+      ];
+    });
+    const first = await t.action(api.worker.poll, {
+      token: "test-worker-secret",
+    });
+    expect(first?._id).toBe(ids[1]);
+    expect(
+      await t.action(api.worker.poll, { token: "test-worker-secret" }),
+    ).toBeNull();
+    expect((await t.run((ctx) => ctx.db.get(ids[0])))?.status).toBe("queued");
+  });
+  it("shows offline workers as unavailable and disables new imports", async () => {
+    const { t, a } = await setup();
+    vi.stubEnv("COLLECTOR_MODE", "outbound");
+    vi.stubEnv("X_MD_API_KEY", "test");
+    await t.mutation(internal.worker.heartbeat, { online: false });
+    expect(await a.query(api.integrations.configured, {})).toMatchObject({
+      handoff: false,
+      indexing: false,
+      collectorMode: "outbound",
+    });
+    await expect(
+      a.mutation(api.jobs.start, { kind: "profile", input: "theo" }),
+    ).rejects.toThrow("worker is offline");
+    await t.mutation(internal.worker.heartbeat, { online: true });
+    expect(await a.query(api.integrations.configured, {})).toMatchObject({
+      handoff: true,
+      indexing: true,
+    });
+  });
+  it("blocks public email sending from unverified guest identities", async () => {
+    const { t, a, alice } = await setup();
+    vi.stubEnv("REQUIRE_VERIFIED_EMAIL", "true");
+    const sessionId = await t.run((ctx) =>
+      ctx.db.insert("sessions", {
+        owner: alice,
+        raw: "convex",
+        sort: "relevance",
+        status: "complete",
+        rows: [],
+        warnings: [],
+      }),
+    );
+    await expect(
+      a.mutation(api.email.send, {
+        sessionId,
+        recipient: "someone@example.com",
+      }),
+    ).rejects.toThrow("verified email");
+  });
+  it("continues older pages in the same import and keeps real post counts", async () => {
+    const { t, alice } = await setup();
+    const jobId = await t.run((ctx) =>
+      ctx.db.insert("jobs", {
+        owner: alice,
+        kind: "bulk",
+        input: "theo",
+        status: "running",
+        count: 2,
+        attempt: 1,
+        pageAttempt: 1,
+        refresh: false,
+        warnings: [],
+        updatedAt: Date.now(),
+        autoContinue: true,
+        pages: 0,
+        postsReceived: 0,
+      }),
+    );
+    const finish = {
+      jobId,
+      attempt: 1,
+      warnings: [],
+      postsReceived: 500,
+      oldest: "2026-06-01",
+      nextUntil: "2026-06-01",
+    };
+    await t.mutation(internal.jobs.finish, finish);
+    await t.mutation(internal.jobs.finish, finish);
+    expect(await t.run((ctx) => ctx.db.get(jobId))).toMatchObject({
+      status: "queued",
+      until: "2026-06-01",
+      postsReceived: 500,
+      pages: 1,
+      pageAttempt: 0,
+    });
+    expect(await t.mutation(internal.jobs.claim, { jobId })).toBeNull();
+    await t.run(ctx => ctx.db.patch(jobId, { readyAt: 0 }));
+    await t.mutation(internal.jobs.claim, { jobId });
+    await t.mutation(internal.jobs.finish, {
+      jobId,
+      attempt: 2,
+      warnings: [],
+      postsReceived: 83,
+      oldest: "2026-01-01",
+      floorReached: true,
+    });
+    expect(await t.run((ctx) => ctx.db.get(jobId))).toMatchObject({
+      status: "complete",
+      postsReceived: 583,
+      pages: 2,
+      floorReached: true,
+    });
+  });
+  it("stops instead of looping when the history boundary does not move", async () => {
+    const { t, alice } = await setup();
+    const jobId = await t.run((ctx) =>
+      ctx.db.insert("jobs", {
+        owner: alice,
+        kind: "bulk",
+        input: "theo",
+        status: "running",
+        count: 2,
+        attempt: 1,
+        refresh: false,
+        warnings: [],
+        updatedAt: Date.now(),
+        autoContinue: true,
+        until: "2026-06-01",
+      }),
+    );
+    await t.mutation(internal.jobs.finish, {
+      jobId,
+      attempt: 1,
+      warnings: [],
+      postsReceived: 1,
+      nextUntil: "2026-06-01",
+    });
+    const job = await t.run((ctx) => ctx.db.get(jobId));
+    expect(job?.status).toBe("complete");
+    expect(job?.error).toContain("did not return an older page");
+    expect(job?.nextUntil).toBeUndefined();
+  });
+  it("keeps the last saved boundary when automatic imports hit their budget", async () => {
+    const { t, alice } = await setup();
+    const jobId = await t.run(async (ctx) => {
+      await ctx.db.insert("budgets", {
+        key: `${new Date().toISOString().slice(0, 10)}:xmd:global`,
+        count: 60,
+      });
+      return ctx.db.insert("jobs", {
+        owner: alice,
+        kind: "bulk",
+        input: "theo",
+        status: "running",
+        count: 2,
+        attempt: 1,
+        refresh: false,
+        warnings: [],
+        updatedAt: Date.now(),
+        autoContinue: true,
+      });
+    });
+    await t.mutation(internal.jobs.finish, {
+      jobId,
+      attempt: 1,
+      warnings: [],
+      postsReceived: 500,
+      nextUntil: "2026-06-01",
+    });
+    expect(await t.run((ctx) => ctx.db.get(jobId))).toMatchObject({
+      status: "complete",
+      postsReceived: 500,
+      nextUntil: "2026-06-01",
+    });
+    expect((await t.run((ctx) => ctx.db.get(jobId)))?.error).toContain(
+      "import limit",
+    );
+  });
+  it("owns cancellation and rejects progress from a stopped worker", async () => {
+    const { t, a, b, alice } = await setup();
+    const jobId = await t.run((ctx) =>
+      ctx.db.insert("jobs", {
+        owner: alice,
+        kind: "profile",
+        input: "theo",
+        status: "running",
+        count: 0,
+        attempt: 1,
+        refresh: false,
+        warnings: [],
+        updatedAt: Date.now(),
+      }),
+    );
+    await expect(b.mutation(api.jobs.cancel, { jobId })).rejects.toThrow(
+      "Job not found",
+    );
+    await expect(b.query(api.jobs.receipts, { jobId })).rejects.toThrow(
+      "Job not found",
+    );
+    await a.mutation(api.jobs.cancel, { jobId });
+    await expect(
+      t.mutation(internal.jobs.progress, {
+        jobId,
+        attempt: 1,
+        phase: "Fetching",
+      }),
+    ).rejects.toThrow("no longer active");
+    await t.mutation(internal.jobs.finish, { jobId, attempt: 1, warnings: [] });
+    expect((await a.query(api.jobs.list, {}))[0].status).toBe("cancelled");
+  });
+  it("keeps saved searches private and rejects cross-user removal", async () => {
+    const { a, b } = await setup();
+    await a.mutation(api.search.save, {
+      raw: "@theo convex",
+      sort: "relevance",
+    });
+    const rows = await a.query(api.search.saved, {});
+    expect(rows).toHaveLength(1);
+    expect(await b.query(api.search.saved, {})).toEqual([]);
+    await expect(
+      b.mutation(api.search.removeSaved, { id: rows[0]._id }),
+    ).rejects.toThrow("Search not found");
+  });
+  it("will not expose search results or bookmark another user's session", async () => {
+    const { t, alice, b } = await setup();
+    const sessionId = await t.run((ctx) =>
+      ctx.db.insert("sessions", {
+        owner: alice,
+        raw: "convex",
+        sort: "relevance",
+        status: "complete",
+        rows: [
+          {
+            tweetId: "123",
+            author: "theo",
+            text: "convex",
+            url: "https://x.com/theo/status/123",
+            links: [],
+          },
+        ],
+        warnings: [],
+      }),
+    );
+    await expect(b.query(api.search.results, { sessionId })).rejects.toThrow(
+      "Search session not found",
+    );
+    await expect(
+      b.mutation(api.search.bookmark, { sessionId, tweetId: "123" }),
+    ).rejects.toThrow("Post not found");
+  });
+  it("advances indexing progress once per receipt and refuses stale workers", async () => {
+    const { t, alice } = await setup();
+    const jobId = await t.run((ctx) =>
+      ctx.db.insert("jobs", {
+        owner: alice,
+        kind: "bulk",
+        input: "theo",
+        refresh: false,
+        status: "running",
+        count: 0,
+        attempt: 1,
+        warnings: [],
+        updatedAt: 0,
+      }),
+    );
+    const ack = {
+      jobId,
+      attempt: 1,
+      captureId: "sha256",
+      receiptId: "r1",
+      count: 25,
+    };
+    await t.mutation(internal.jobs.ack, ack);
+    await t.mutation(internal.jobs.ack, ack);
+    expect(await t.run(async (ctx) => (await ctx.db.get(jobId))!.count)).toBe(
+      25,
+    );
+    await expect(
+      t.mutation(internal.jobs.ack, { ...ack, attempt: 2 }),
+    ).rejects.toThrow("no longer active");
+    await t.mutation(internal.jobs.expire, { jobId, attempt: 1 });
+    expect(await t.run(async (ctx) => (await ctx.db.get(jobId))!.status)).toBe(
+      "partial",
+    );
+  });
+  it("gates collection on both the x.md credential and downstream receiver", async () => {
+    const { a } = await setup();
+    vi.stubEnv("X_MD_API_KEY", "test");
+    vi.stubEnv("RAW_CAPTURE_URL", "");
+    await expect(
+      a.mutation(api.jobs.start, { kind: "bulk", input: "theo" }),
+    ).rejects.toThrow("raw-capture receiver");
+  });
+  it("reads the Firecrawl component's unwrapped document and caches the UI preview", async () => {
+    const { t, a } = await setup();
+    firecrawlTest.register(t);
+    vi.stubEnv("FIRECRAWL_API_KEY", "fc-test");
+    vi.stubEnv("RAW_CAPTURE_URL", "");
+    const fetcher = vi.fn(async () =>
+      Response.json({
+        success: true,
+        data: {
+          markdown: "# Real page shape",
+          metadata: { title: "Page title" },
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    expect(
+      await a.action(api.integrations.readLink, {
+        url: "https://example.com/page",
+      }),
+    ).toEqual({
+      url: "https://example.com/page",
+      title: "Page title",
+      text: "# Real page shape",
+      collectedAt: expect.any(Number),
+    });
+    await a.action(api.integrations.readLink, {
+      url: "https://example.com/page",
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("rejects unauthenticated paid actions before calling a provider", async () => {
+    const { t } = await setup();
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    await expect(
+      t.action(api.integrations.readLink, { url: "https://example.com" }),
+    ).rejects.toThrow("Start a session");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("bounds stored web previews and preserves their collection time on cache hits", async () => {
+    const { t, a } = await setup();
+    firecrawlTest.register(t);
+    vi.stubEnv("FIRECRAWL_API_KEY", "fc-test");
+    vi.stubEnv("RAW_CAPTURE_URL", "");
+    const fetcher = vi.fn(async () =>
+      Response.json({
+        success: true,
+        data: {
+          markdown: "a".repeat(5000),
+          metadata: { title: "Long article" },
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const first = await a.action(api.integrations.readLink, {
+      url: "https://example.com/long",
+    });
+    const cached = await a.action(api.integrations.readLink, {
+      url: "https://example.com/long",
+    });
+    expect(first.text).toContain("Preview shortened");
+    expect(first.text.length).toBeLessThan(4200);
+    expect(cached).toEqual(first);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(await t.run((ctx) => ctx.db.query("pages").first())).toMatchObject({
+      collectedAt: first.collectedAt,
+      text: first.text,
+    });
+  });
+  it("retains an explicit author even when OpenAI omits it", async () => {
+    const { a } = await setup();
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          output: [
+            {
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    text: "convex",
+                    author: "",
+                    explanation: "Shorter keywords",
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    expect(
+      await a.action(api.integrations.interpret, {
+        raw: "@theo posts about convex",
+      }),
+    ).toMatchObject({ query: "@theo convex" });
+  });
+  it("rejects OpenAI changing an explicit author", async () => {
+    const { a } = await setup();
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          output: [
+            {
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    text: "convex",
+                    author: "someone_else",
+                    explanation: "Changed",
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    await expect(
+      a.action(api.integrations.interpret, { raw: "@theo convex" }),
+    ).rejects.toThrow("different author");
+  });
+  it("rejects unsupported hard filters before an OpenAI request", async () => {
+    const { a } = await setup();
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    await expect(
+      a.action(api.integrations.interpret, { raw: "convex -is:reply" }),
+    ).rejects.toThrow("operators");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});

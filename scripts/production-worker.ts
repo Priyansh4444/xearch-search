@@ -1,0 +1,121 @@
+import { readFile } from "node:fs/promises";
+import { parseEnv } from "node:util";
+import { ConvexHttpClient } from "convex/browser";
+import { collectXmd } from "../convex/lib/collect";
+import { XmdClient, ProviderError } from "../convex/lib/xmd";
+import { deliverCapture } from "../convex/lib/handoff";
+const env = parseEnv(await readFile(".env.local", "utf8"));
+if (!env.X_MD_API_KEY) throw new Error("Local X_MD_API_KEY is required.");
+const token = (await readFile(".local-captures/worker-token", "utf8")).trim();
+const captureToken = (await readFile(".local-captures/token", "utf8")).trim();
+const client = new ConvexHttpClient("https://utmost-kudu-321.convex.cloud");
+let stopping = false;
+for (const signal of ["SIGINT", "SIGTERM"] as const)
+  process.on(signal, () => {
+    stopping = true;
+  });
+async function healthy() {
+  try {
+    return (
+      await fetch("http://127.0.0.1:4319/health", {
+        signal: AbortSignal.timeout(3000),
+      })
+    ).ok;
+  } catch {
+    return false;
+  }
+}
+console.log(
+  "Production download worker started. Connections are outbound only; raw posts stay on this Mac.",
+);
+while (!stopping) {
+  try {
+    const online = await healthy();
+    const job = await client.action("worker:poll" as any, { token, online });
+    if (job) {
+      console.log(`Downloading ${job.kind} for ${job.input}`);
+      const report = (args: Record<string, unknown>) =>
+        client.action("worker:report" as any, {
+          token,
+          jobId: job._id,
+          attempt: job.attempt,
+          ...args,
+        });
+      const heartbeat = setInterval(() => {
+        void healthy()
+          .then((online) =>
+            client.action("worker:poll" as any, {
+              token,
+              heartbeatOnly: true,
+              online,
+            }),
+          )
+          .catch(() => {});
+      }, 15000);
+      try {
+        const result = await collectXmd(
+          new XmdClient(env.X_MD_API_KEY, fetch, env.X_MD_BASE_URL),
+          {
+            runId: job._id,
+            attempt: job.attempt,
+            kind: job.kind,
+            input: job.input,
+            since: job.since,
+            until: job.until,
+            cursor: job.cursor,
+            refresh: job.refresh,
+            expectedUserId: job.expectedUserId,
+          },
+          (capture) =>
+            deliverCapture(
+              "http://127.0.0.1:4319/captures",
+              captureToken,
+              capture,
+            ),
+          async (receipt, count) => {
+            await report({
+              event: "receipt",
+              captureId: receipt.captureId,
+              receiptId: receipt.receiptId,
+              count,
+            });
+          },
+          Date.now,
+          async (userId) => {
+            await report({ event: "identity", userId });
+          },
+          async (phase) => {
+            if (stopping) throw new Error("Worker stopping");
+            await report({ event: "phase", phase });
+          },
+        );
+        const { profile: _rawProfile, ...summary } = result;
+        await report({ event: "finish", ...summary });
+        console.log("Batch saved; production progress updated.");
+      } catch (error) {
+        await report({
+          event: "finish",
+          error:
+            error instanceof ProviderError
+              ? error.message
+              : "Download interrupted. Saved batches are safe. Retry to continue.",
+          retryAfter:
+            error instanceof ProviderError && error.retryable
+              ? error.retryAfter
+              : undefined,
+        });
+        console.log("Job interrupted; see its production status for details.");
+      } finally {
+        clearInterval(heartbeat);
+      }
+    }
+  } catch {
+    console.log(
+      "Worker connection unavailable. Retrying shortly; credentials are not logged.",
+    );
+  }
+  if (!stopping) await new Promise((resolve) => setTimeout(resolve, 5000));
+}
+await client
+  .action("worker:poll" as any, { token, heartbeatOnly: true, online: false })
+  .catch(() => {});
