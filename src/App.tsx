@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useRef,
   useState,
   type FormEvent,
@@ -23,6 +24,7 @@ import {
   ExternalLink,
   Heart,
   Link2,
+  LayoutDashboard,
   Mail,
   MessageCircle,
   Plus,
@@ -52,11 +54,23 @@ const fromLocation = () => ({
   sort: (sorts.find((s) => s.value === new URLSearchParams(location.search).get("sort"))?.value ??
     "relevance") as Sort,
 });
-const compact = (n: number) =>
-  Intl.NumberFormat("en", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(n);
+const compactNumber = new Intl.NumberFormat("en", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+const postDate = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const compact = (n: number) => compactNumber.format(n);
+const safeHostname = (url: string) => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "Linked page";
+  }
+};
 const describeError = (e: unknown) =>
   e instanceof ConvexError
     ? String(e.data)
@@ -64,16 +78,16 @@ const describeError = (e: unknown) =>
       ? e.message.replace(/\[CONVEX[^]*?Uncaught (?:Error|ConvexError):\s*/, "").split("\n")[0]
       : "Something went wrong. Try again.";
 function Avatar({ name, url }: { name: string; url?: string }) {
-  const [failed, setFailed] = useState(false);
+  const [failedUrl, setFailedUrl] = useState<string>();
   return (
     <span className="avatar">
-      {url && !failed ? (
+      {url && url !== failedUrl ? (
         <img
           src={url}
           alt=""
           loading="lazy"
           referrerPolicy="no-referrer"
-          onError={() => setFailed(true)}
+          onError={() => setFailedUrl(url)}
         />
       ) : (
         name.slice(0, 2).toUpperCase()
@@ -93,12 +107,14 @@ function Modal({
   notice?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   useEffect(() => {
     ref.current?.showModal();
   }, []);
   return (
     <dialog
       ref={ref}
+      aria-labelledby={titleId}
       onCancel={close}
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
@@ -106,8 +122,8 @@ function Modal({
     >
       <div className="modal-inner">
         <header>
-          <h2>{title}</h2>
-          <button className="icon" onClick={close} aria-label="Close">
+          <h2 id={titleId}>{title}</h2>
+          <button type="button" className="icon" onClick={close} aria-label="Close">
             <X size={20} />
           </button>
         </header>
@@ -165,6 +181,8 @@ function PostCard({
   onAuthor: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const createdAt = post.createdAt === undefined ? null : new Date(post.createdAt);
+  const hasValidDate = createdAt !== null && !Number.isNaN(createdAt.getTime());
   return (
     <article className="post">
       <header>
@@ -176,15 +194,11 @@ function PostCard({
           </span>
         </button>
         <div className="post-meta">
-          {post.createdAt && (
-            <time dateTime={new Date(post.createdAt).toISOString()}>
-              {new Date(post.createdAt).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
+          {hasValidDate ? (
+            <time dateTime={createdAt.toISOString()}>
+              {postDate.format(createdAt)}
             </time>
-          )}
+          ) : null}
           <button
             className={`icon ${bookmarked ? "accent" : ""}`}
             aria-label={bookmarked ? "Remove bookmark" : "Bookmark post"}
@@ -210,7 +224,7 @@ function PostCard({
           {post.links.slice(0, 3).map((url) => (
             <button key={url} onClick={() => onRead(url)} title={url}>
               <Link2 size={14} />
-              <span>{new URL(url).hostname}</span>
+              <span>{safeHostname(url)}</span>
               <ArrowUpRight size={13} />
             </button>
           ))}
@@ -314,8 +328,10 @@ export default function App() {
     });
     await session.current;
   };
-  const accounts = useQuery(api.search.accounts) ?? [];
+  const accountResults = useQuery(api.search.accounts);
+  const accounts = accountResults ?? [];
   const configured = useQuery(api.integrations.configured);
+  const libraryLoading = accountResults === undefined || configured === undefined;
   let queryError = "";
   try {
     parseQuery(raw);
@@ -453,6 +469,7 @@ export default function App() {
         </button>
         <nav aria-label="Main navigation">
           <button
+            aria-label="Import dashboard"
             onClick={() => {
               setDashboard(true);
               const url = new URL(location.href);
@@ -460,7 +477,8 @@ export default function App() {
               history.replaceState(null, "", url);
             }}
           >
-            Dashboard
+            <LayoutDashboard size={15} />
+            <span>Dashboard</span>
           </button>
           <button
             aria-label="Saved searches"
@@ -492,14 +510,17 @@ export default function App() {
       </header>
       {!connection.isWebSocketConnected && (
         <p className="connection" role="status">
-          Connecting to your search library…
+          <span className="connection-dot" />
+          {connection.hasEverConnected
+            ? "Reconnecting to your search library…"
+            : "Connecting to your search library…"}
         </p>
       )}
       <main>
         <section className="search-stage" aria-label="Search X posts">
           {home && (
             <>
-              <div className="orbit" aria-label="Imported accounts">
+              <div className="orbit" role="group" aria-label="Imported accounts">
                 {accounts.slice(0, 32).map((a, i, all) => {
                   const angle = (i / all.length) * Math.PI * 2 - Math.PI / 2;
                   return (
@@ -614,8 +635,13 @@ export default function App() {
             </div>
           )}
           {home && (
-            <div className="library-status">
-              {accounts.length ? (
+            <div className="library-status" aria-live="polite">
+              {libraryLoading ? (
+                <>
+                  <span className="status-dot loading" />
+                  Loading your search library…
+                </>
+              ) : accounts.length ? (
                 <>
                   <span className="status-dot" />
                   Select an imported account to search its posts
@@ -653,7 +679,9 @@ export default function App() {
                 <p>
                   {view === "bookmarks"
                     ? `${bookmarks.length} saved posts in this browser's session`
-                    : !configured?.search
+                    : configured === undefined
+                      ? "Checking your search service connection"
+                      : !configured.search
                       ? "Waiting for the search service connection"
                       : result?.status === "complete"
                         ? `${result.rows.length} posts on this page`
@@ -709,7 +737,11 @@ export default function App() {
                 <h2>Adjust your search</h2>
                 <p>{queryError}</p>
               </div>
-            ) : view === "search" && !configured?.search ? (
+            ) : view === "search" && configured === undefined ? (
+              <div className="empty" role="status">
+                Checking your connections…
+              </div>
+            ) : view === "search" && configured?.search === false ? (
               <div className="empty">
                 <Search size={30} />
                 <h2>Connect the search service.</h2>
