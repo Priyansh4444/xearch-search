@@ -18,6 +18,11 @@ search-ranking = { path = "crates/ranking" }
 search-backend = { path = "crates/backend" }
 search-tantivy = { path = "crates/tantivy" }
 search-ingest = { path = "crates/ingest" }
+search-api = { path = "crates/api" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
+hmac = "0.12"
+hex = "0.4"
 tantivy = { version = "0.26.2", default-features = false, features = ["mmap", "lz4-compression"] }
 sha2 = "0.10"
 tempfile = "3"
