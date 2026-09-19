@@ -1,0 +1,9 @@
+[package]
+name = "search-ranking"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[lints]
+workspace = true
+[dependencies]
+search-model.workspace = true
