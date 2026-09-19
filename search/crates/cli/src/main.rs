@@ -78,6 +78,11 @@ enum UsersAction {
         #[arg(long, value_parser = ["complete", "incomplete", "error"])]
         status: Option<String>,
     },
+    /// Print imported capture batches keyed by content hash.
+    Captures {
+        #[arg(long, env = "SEARCH_STATE_DIR")]
+        state_dir: Option<PathBuf>,
+    },
     /// Mark a user complete, incomplete, or error by hand.
     Mark {
         #[arg(long, env = "SEARCH_STATE_DIR")]
@@ -139,12 +144,24 @@ fn run_users_list(state_dir: &std::path::Path, status: Option<String>) -> color_
     Ok(())
 }
 
+fn run_users_captures(state_dir: &std::path::Path) -> color_eyre::Result<()> {
+    let registry =
+        search_indexer::users::Registry::load(&search_indexer::users::registry_path(state_dir))?;
+    let captures: std::collections::BTreeMap<_, _> = registry.captures.into_iter().collect();
+    println!("{}", serde_json::to_string_pretty(&captures)?);
+    Ok(())
+}
+
 fn run_users_mark(
     state_dir: &std::path::Path,
     handle: &str,
     status: &str,
     note: Option<&str>,
 ) -> color_eyre::Result<()> {
+    // Hold the mark section under the same lock the watcher uses, so a
+    // starting watcher waits instead of overwriting the change, and a
+    // running watcher makes this fail instead of silently reverting.
+    let _guard = search_indexer::acquire_exclusive(state_dir, "mark")?;
     let handle = search_query::normalize_author(handle)?;
     let path = search_indexer::users::registry_path(state_dir);
     let mut registry = search_indexer::users::Registry::load(&path)?;
@@ -240,6 +257,9 @@ async fn main() -> color_eyre::Result<()> {
         Command::Users { action } => match action {
             UsersAction::List { state_dir, status } => {
                 run_users_list(&resolve_top_state(state_dir)?, status)
+            }
+            UsersAction::Captures { state_dir } => {
+                run_users_captures(&resolve_top_state(state_dir)?)
             }
             UsersAction::Mark {
                 state_dir,

@@ -26,13 +26,16 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UNIT="xearch-search-indexer.service"
 
 default_bin() {
-  if [[ -x "$REPO/search/target/release/xearch-search" ]]; then
+  if [[ -x "$HOME/.local/bin/xearch-search" ]]; then
+    echo "$HOME/.local/bin/xearch-search"
+  elif [[ -x "$REPO/search/target/release/xearch-search" ]]; then
     echo "$REPO/search/target/release/xearch-search"
   else
     echo "$REPO/search/target/debug/xearch-search"
   fi
 }
 BIN="${SEARCH_BIN:-$(default_bin)}"
+BIN_DIR="${SEARCH_BIN_DIR:-$HOME/.local/bin}"
 BASE="${SEARCH_BASE_DIR:-$HOME/xearch-search}"
 PIDFILE="$BASE/indexer.pid"
 
@@ -47,6 +50,16 @@ build() {
     echo "building xearch-search ($dir)..." >&2
     (cd "$REPO/search" && cargo build -q -p xearch-search "${profile[@]}")
   fi
+}
+
+# Build the release binary and install it where the systemd unit looks:
+# ~/.local/bin/xearch-search. This is what makes the committed unit portable
+# to a machine whose checkout lives anywhere.
+do_install() {
+  echo "building release..." >&2
+  (cd "$REPO/search" && cargo build --release -p xearch-search)
+  install -Dm755 "$REPO/search/target/release/xearch-search" "$BIN_DIR/xearch-search"
+  echo "installed $BIN_DIR/xearch-search"
 }
 
 unit_active() {
@@ -85,6 +98,10 @@ do_start() {
     return
   fi
   if unit_installed; then
+    if [[ ! -x "$HOME/.local/bin/xearch-search" ]]; then
+      echo "unit needs $HOME/.local/bin/xearch-search; run: $0 install" >&2
+      return 1
+    fi
     if pid="$(running_pid)"; then
       echo "stopping manual watcher (pid $pid) before systemd start" >&2
       kill "$pid"; rm -f "$PIDFILE"
@@ -150,6 +167,7 @@ print('users:', dict(c) or 'none yet', 'total:', len(users))
 }
 
 case "${1:-status}" in
+  install) do_install ;;
   start) do_start ;;
   stop) do_stop ;;
   restart) do_stop; sleep 1; do_start ;;
@@ -157,5 +175,5 @@ case "${1:-status}" in
   status) do_status ;;
   logs) mkdir -p "$BASE/logs"; exec tail -f "$BASE/logs/indexer.log" ;;
   users) shift; build; exec "$BIN" --base-dir "$BASE" users "$@" ;;
-  *) echo "usage: $0 {start|stop|restart|continue|status|logs|users ...}" >&2; exit 1 ;;
+  *) echo "usage: $0 {install|start|stop|restart|continue|status|logs|users ...}" >&2; exit 1 ;;
 esac

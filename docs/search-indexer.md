@@ -37,7 +37,7 @@ $BASE/archive/  Content-addressed originals:
                 <sha256>.json              exact retained input bytes
                 <sha256>.receipt.json      {sha256, accepted, rejected}
                 <sha256>.rejected.jsonl    quarantined records + reasons
-$BASE/drop/     Intake: one file per account, named <handle>.json[l]
+$BASE/drop/     Intake: <handle>.json dumps or <sha256>.json capture batches
 $BASE/state/    users.json — the per-user retry registry
 $BASE/logs/     indexer.log
 ```
@@ -64,22 +64,32 @@ Every intake account is one record, keyed by normalized handle
       "fileName": "hero.json",
       "updatedAtMs": 1789826880797
     }
+  },
+  "captures": {
+    "f39540…": {
+      "handle": "hero",
+      "accepted": 40,
+      "rejected": 0,
+      "updatedAtMs": 1789826880797
+    }
   }
 }
 ```
 
 Status machine, applied by every pass:
 
-| Situation                                   | Result                                                                   |
-| ------------------------------------------- | ------------------------------------------------------------------------ |
-| New file seen                               | record starts `incomplete`                                               |
-| Import accepts ≥1 post                      | `complete` with receipt facts                                            |
-| Import accepts 0 posts (or all quarantined) | `error` — "No posts accepted; N quarantined"                             |
-| Import fails (malformed/IO)                 | `error` with reason, attempts+1                                          |
-| `error`/`incomplete` user                   | retried on every subsequent pass                                         |
-| `complete` user, unchanged bytes            | skipped (content-hash signature)                                         |
-| File bytes changed                          | reimported even if `complete`                                            |
-| Two files map to one handle                 | the second file is skipped with a warning until the collision is removed |
+| Situation | Result |
+|---|---|
+| New file seen | record starts `incomplete` |
+| Import accepts ≥1 post | `complete` with receipt facts |
+| Import accepts 0 posts (or all quarantined) | `error` — "No posts accepted; N quarantined" |
+| Import fails (malformed/IO) | `error` with reason, attempts+1 |
+| `error`/`incomplete` user | retried on every subsequent pass |
+| `complete` user, unchanged bytes | skipped (content-hash signature) |
+| File bytes changed | reimported even if `complete` |
+| Two files map to one handle | the second file is skipped with a warning while the recorded file exists; removing or renaming the recorded file lets the survivor take over |
+| Index empty but registry non-empty | recorded users and capture batches are reimported (index reset recovery, logged loudly) |
+| Registry file corrupt or unreadable | quarantined as `users.json.bad-<unix-ms>` and recreated empty; ingestion continues |
 
 Safety properties:
 
@@ -89,8 +99,62 @@ Safety properties:
   mid-save never leaves a half registry.
 - Each imported file is saved with its new registry entry in the same
   pass, so a killed watcher continues where the last file completed.
-- Manual `users mark incomplete` clears the signature → next pass
-  reimports that file even if unchanged.
+- Manual `users mark incomplete` clears the signature and file binding →
+  next pass reimports that file even if unchanged.
+- A single-instance lock (`state/indexer.lock`, `"<pid> <kind>"`) keeps one
+  watcher per data root. Holders are identity-checked by `/proc/<pid>/cmdline`
+  (not just pid existence), stale locks are reclaimed atomically, and the
+  lock releases on Ctrl-C/SIGTERM. `users mark` takes the same lock for its
+  short section: it fails when a watcher runs, and a watcher starting at the
+  same instant waits rather than losing the change.
+- Stale `.tmp*` files from a SIGKILLed run are swept at startup.
+
+## Capture batches (raw-capture receiver output)
+
+`scripts/capture-server.mjs` writes each received capture as
+`<sha256>.json` under `.local-captures/raw/`. The watcher imports that
+shape directly — one batch per content hash, exactly once:
+
+```sh
+# Point the indexer's drop dir at the receiver's raw directory:
+xearch-search --base-dir "$BASE" watch --drop-dir /path/to/.local-captures/raw
+# or copy batches in:
+cp .local-captures/raw/<sha256>.json "$BASE/drop/"
+```
+
+Each batch is a `{version, runId, source, request, records, terminal}`
+envelope; posts inside `records[].payload.posts`/`payload.post` are
+normalized, profile records are skipped, malformed records are quarantined.
+The handle in `captures.<sha>.handle` is reporting metadata taken from the
+payload. Batches accumulate: many batches for one handle all import, unlike
+per-user dump files where one file is the handle's source of truth.
+
+Capture files are read from the drop directory: keep the receiver's
+`raw/` directory as the drop dir, or copy batches in. Unlike per-user
+dumps, batches are content-addressed and immutable, so deleting the index
+reimports every recorded batch from the still-present files (see below).
+
+Batch semantics: each capture is imported exactly once per content hash, in
+filename order. Re-dropping an *older* per-user dump after a newer one is
+last-writer-wins (upserts replace by tweet ID), so re-import the newest file
+if a restore ever moves backwards.
+
+## Index corruption recovery
+
+If the index directory is damaged the watcher keeps running but every pass
+fails with a clear error. The raw inputs are safe in `$BASE/archive/<sha>.json`.
+Rebuild:
+
+```sh
+systemctl --user stop xearch-search-indexer    # or: search-index-ctl.sh stop
+rm -rf "$BASE/index"                            # archive + state are untouched
+# re-drop the retained inputs (or leave them in drop/ and let the registry
+# reimport: an empty index forces reimport of every recorded user)
+scripts/search-index-ctl.sh start
+```
+
+Deleting `index/` alone is enough: on the next pass the watcher detects an
+empty index with a populated registry and reimports from `drop/`.
 
 ## Retry + error operation
 
@@ -105,7 +169,17 @@ xearch-search --base-dir "$BASE" users mark <handle> complete --note "verified b
 
 ## Running it
 
-Local/manual control (no systemd needed), derivable from its own header:
+Install for systemd (portable — the unit carries no checkout path):
+
+```sh
+scripts/search-index-ctl.sh install   # builds release, installs ~/.local/bin/xearch-search
+cp deploy/systemd/xearch-search-indexer.service ~/.config/systemd/user/
+mkdir -p ~/xearch-search/{index,archive,drop,state,logs}
+systemctl --user daemon-reload
+# then: systemctl --user start xearch-search-indexer.service  (needs operator approval)
+```
+
+Local/manual control (no systemd needed):
 
 ```sh
 search-index-ctl.sh start | stop | restart | continue | status | logs | users …

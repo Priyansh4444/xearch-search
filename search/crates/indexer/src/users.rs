@@ -28,6 +28,15 @@
 //! - `error` / `incomplete` users are retried every pass; `complete` users
 //!   are skipped unless their file changes (or an operator marks them
 //!   `incomplete`, which clears the file signature and forces reimport).
+//!
+//! A corrupted registry file is quarantined next to itself
+//! (`users.json.bad-<unix>`) and replaced by an empty one, so a single bad
+//! byte can never brick ingestion permanently.
+//!
+//! Besides per-user records, `captures` tracks content-addressed capture
+//! files (`<sha256>.json`, as written by the raw-capture receiver) so each
+//! batch is imported exactly once regardless of how many batches a handle
+//! produces.
 
 use search_ingest::Receipt;
 use search_model::{Error, Result};
@@ -72,10 +81,13 @@ impl std::str::FromStr for UserStatus {
 pub struct UserRecord {
     pub status: UserStatus,
     /// Total import attempts so far.
+    #[serde(default)]
     pub attempts: u32,
     /// Posts accepted by the last successful import.
+    #[serde(default)]
     pub accepted: u64,
     /// Records quarantined by the last successful import.
+    #[serde(default)]
     pub rejected: u64,
     /// Content hash of the last successfully imported file.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -91,6 +103,20 @@ pub struct UserRecord {
     /// the same handle cannot oscillate against one signature.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
+    #[serde(default)]
+    pub updated_at_ms: i64,
+}
+
+/// One imported content-addressed capture file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureRecord {
+    /// Handle the capture belonged to, when it could be derived.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handle: Option<String>,
+    pub accepted: u64,
+    pub rejected: u64,
+    #[serde(default)]
     pub updated_at_ms: i64,
 }
 
@@ -113,9 +139,17 @@ impl UserRecord {
 /// The registry file: versioned map of handle to record.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Registry {
+    #[serde(default = "default_version")]
     pub version: u8,
     #[serde(default)]
     pub users: HashMap<String, UserRecord>,
+    /// Imported capture files keyed by their content hash (filename stem).
+    #[serde(default)]
+    pub captures: HashMap<String, CaptureRecord>,
+}
+
+const fn default_version() -> u8 {
+    1
 }
 
 impl Default for Registry {
@@ -123,6 +157,7 @@ impl Default for Registry {
         Self {
             version: 1,
             users: HashMap::new(),
+            captures: HashMap::new(),
         }
     }
 }
@@ -139,25 +174,72 @@ fn storage(error: impl std::fmt::Display) -> Error {
 
 impl Registry {
     /// Load the registry; a missing file is an empty registry, not an error.
+    /// A malformed or unreadable file is quarantined as
+    /// `users.json.bad-<unix-ms>` and replaced by an empty registry so
+    /// ingestion can continue; the raw evidence is retained for inspection.
     ///
     /// # Errors
-    /// Returns storage errors for unreadable or malformed files.
+    /// Returns storage errors only when the quarantine copy cannot be
+    /// written (for example a read-only state directory).
     pub fn load(path: &Path) -> Result<Self> {
-        match std::fs::read(path) {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self {
-                version: 1,
-                users: HashMap::new(),
-            }),
-            Err(error) => Err(storage(error)),
-            Ok(bytes) => {
-                let registry: Self =
-                    serde_json::from_slice(&bytes).map_err(|e| Error::Invalid(e.to_string()))?;
-                if registry.version != 1 {
-                    return Err(Error::Invalid("Unsupported users registry version.".into()));
-                }
-                Ok(registry)
+        let bytes = match std::fs::read(path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self::default());
+            }
+            Err(error) => {
+                // A directory or an unreadable file can never parse; move it
+                // aside instead of failing every pass forever.
+                Self::quarantine(path, &format!("unreadable: {error}"))?;
+                return Ok(Self::default());
+            }
+            Ok(bytes) => bytes,
+        };
+        match serde_json::from_slice::<Self>(&bytes) {
+            Ok(registry) if registry.version == 1 => Ok(registry),
+            Ok(registry) => {
+                let note = format!("unsupported version {}", registry.version);
+                Self::quarantine(path, &note)?;
+                Ok(Self::default())
+            }
+            Err(error) => {
+                Self::quarantine(path, &error.to_string())?;
+                Ok(Self::default())
             }
         }
+    }
+
+    /// Move a corrupt registry aside, keeping the evidence. Millisecond
+    /// stamps plus a counter make repeated quarantines collision-free.
+    fn quarantine(path: &Path, reason: &str) -> Result<()> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis());
+        let mut bad = path.with_extension(format!("json.bad-{stamp}"));
+        let mut suffix = 0_u32;
+        while bad.exists() {
+            suffix = suffix.saturating_add(1);
+            bad = path.with_extension(format!("json.bad-{stamp}-{suffix}"));
+        }
+        std::fs::rename(path, &bad).map_err(storage)?;
+        eprintln!(
+            "indexer quarantined registry {} as {} ({reason})",
+            path.display(),
+            bad.display()
+        );
+        Ok(())
+    }
+
+    /// Record one imported capture file.
+    pub fn mark_capture(&mut self, sha: &str, handle: Option<&str>, receipt: &Receipt) {
+        self.captures.insert(
+            sha.to_owned(),
+            CaptureRecord {
+                handle: handle.map(str::to_owned),
+                accepted: receipt.accepted,
+                rejected: receipt.rejected,
+                updated_at_ms: now_ms(),
+            },
+        );
     }
 
     /// Persist atomically (temp file + rename) so a crash never leaves a
@@ -250,7 +332,10 @@ impl Registry {
         record.status = status;
         match status {
             UserStatus::Incomplete => {
+                // Clear the binding so a renamed or colliding file can take
+                // over the handle on the next pass.
                 record.file_sig = None;
+                record.file_name = None;
                 record.last_error = note.map(str::to_owned);
             }
             UserStatus::Error => {

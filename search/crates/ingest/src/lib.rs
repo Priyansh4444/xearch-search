@@ -14,7 +14,8 @@ use std::{
     path::Path,
 };
 
-const MAX_INPUT: u64 = 64 * 1024 * 1024;
+/// Hard cap on one import's input bytes.
+pub const MAX_INPUT: u64 = 64 * 1024 * 1024;
 
 fn storage(error: impl fmt::Display) -> Error {
     Error::Storage(error.to_string())

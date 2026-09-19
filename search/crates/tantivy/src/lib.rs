@@ -105,6 +105,16 @@ impl Engine {
         self.index.schema().get_field(name).map_err(storage)
     }
 
+    /// Live document count, reloaded from disk. Used to detect a registry
+    /// that believes it is complete while the index is actually empty.
+    ///
+    /// # Errors
+    /// Returns storage errors when the index cannot be read.
+    pub fn num_docs(&self) -> Result<u64> {
+        self.reader.reload().map_err(storage)?;
+        Ok(self.reader.searcher().num_docs())
+    }
+
     fn compile(&self, expression: &Expr) -> Result<Box<dyn Query>> {
         match expression {
             Expr::Term(text) | Expr::Phrase(text) => {
