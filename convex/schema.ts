@@ -121,7 +121,5 @@ export default defineSchema({
     outboundId: v.string(),
     query: v.string(),
   }).index("by_owner", ["owner"]),
-  budgets: defineTable({ key: v.string(), count: v.number() }).index("by_key", [
-    "key",
-  ]),
+  budgets: defineTable({ key: v.string(), count: v.number() }).index("by_key", ["key"]),
 });

@@ -10,25 +10,18 @@ export const send = mutation({
     const owner = await user(ctx);
     if (process.env.REQUIRE_VERIFIED_EMAIL === "true") {
       const account = await ctx.db.get(owner);
-      if (!account?.emailVerificationTime || account.email?.toLowerCase() !== args.recipient.trim().toLowerCase())
+      if (
+        !account?.emailVerificationTime ||
+        account.email?.toLowerCase() !== args.recipient.trim().toLowerCase()
+      )
         throw new ConvexError("Email sending requires sign-in with a verified email address.");
     }
     if (!process.env.AGENTMAIL_API_KEY || !process.env.AGENTMAIL_INBOX_ID)
-      throw new ConvexError(
-        "Configure AgentMail on the backend to send results.",
-      );
-    if (
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.recipient) ||
-      args.recipient.length > 254
-    )
+      throw new ConvexError("Configure AgentMail on the backend to send results.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.recipient) || args.recipient.length > 254)
       throw new ConvexError("Enter a valid email address.");
     const result = await ctx.db.get(args.sessionId);
-    if (
-      !result ||
-      result.owner !== owner ||
-      result.status !== "complete" ||
-      !result.rows.length
-    )
+    if (!result || result.owner !== owner || result.status !== "complete" || !result.rows.length)
       throw new ConvexError("There are no completed search results to send.");
     await budget(ctx, "email:global", 20);
     await budget(ctx, `email:${owner}`, 3);
@@ -38,15 +31,11 @@ export const send = mutation({
         .slice(0, 10)
         .map((p) => `@${p.author}\n${p.text.slice(0, 1500)}\n${p.url}`)
         .join("\n\n---\n\n");
-    const outboundId = await mail.sendMessage(
-      ctx,
-      process.env.AGENTMAIL_INBOX_ID,
-      {
-        to: args.recipient,
-        subject: `Xearch: ${result.raw.replace(/[\r\n]/g, " ").slice(0, 100)}`,
-        text,
-      },
-    );
+    const outboundId = await mail.sendMessage(ctx, process.env.AGENTMAIL_INBOX_ID, {
+      to: args.recipient,
+      subject: `Xearch: ${result.raw.replace(/[\r\n]/g, " ").slice(0, 100)}`,
+      text,
+    });
     await ctx.db.insert("deliveries", { owner, outboundId, query: result.raw });
   },
 });

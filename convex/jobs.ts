@@ -2,7 +2,7 @@ import { v, ConvexError } from "convex/values";
 import { query, mutation, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { kindValidator } from "./schema";
-import { budget, user } from "./access";
+import { user } from "./access";
 import { handle, statusUrl } from "./lib/xmd";
 
 export const list = query({
@@ -27,25 +27,13 @@ export const restoreSummary = internalMutation({
   },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
-    if (
-      !job ||
-      job.kind !== "bulk" ||
-      job.status !== "complete" ||
-      job.postsReceived !== undefined
-    )
+    if (!job || job.kind !== "bulk" || job.status !== "complete" || job.postsReceived !== undefined)
       return;
     const receipt = await ctx.db
       .query("receipts")
-      .withIndex("by_capture", (q) =>
-        q.eq("jobId", job._id).eq("captureId", args.captureId),
-      )
+      .withIndex("by_capture", (q) => q.eq("jobId", job._id).eq("captureId", args.captureId))
       .unique();
-    if (
-      !receipt ||
-      !Number.isInteger(args.posts) ||
-      args.posts < 0 ||
-      args.posts > 500
-    )
+    if (!receipt || !Number.isInteger(args.posts) || args.posts < 0 || args.posts > 500)
       throw new Error("Invalid saved batch summary");
     await ctx.db.patch(job._id, {
       postsReceived: args.posts,
@@ -76,10 +64,7 @@ export const start = mutation({
       throw new ConvexError(
         "The download worker is offline. Start it on your Mac, then try again.",
       );
-    if (
-      !process.env.X_MD_API_KEY ||
-      (!outbound && !process.env.RAW_CAPTURE_URL)
-    )
+    if (!process.env.X_MD_API_KEY || (!outbound && !process.env.RAW_CAPTURE_URL))
       throw new ConvexError(
         "Connect x.md and the raw-capture receiver before starting an indexing job.",
       );
@@ -89,12 +74,10 @@ export const start = mutation({
         : args.kind === "post"
           ? statusUrl(args.input)
           : handle(args.input);
-    if (!input || input.length > 300)
-      throw new ConvexError("Enter a search under 300 characters.");
+    if (!input || input.length > 300) throw new ConvexError("Enter a search under 300 characters.");
     if (
       args.since &&
-      (!/^\d{4}-\d{2}-\d{2}$/.test(args.since) ||
-        !Number.isFinite(Date.parse(args.since)))
+      (!/^\d{4}-\d{2}-\d{2}$/.test(args.since) || !Number.isFinite(Date.parse(args.since)))
     )
       throw new ConvexError("Choose a valid start date.");
     const previous = args.previous ? await ctx.db.get(args.previous) : null;
@@ -105,9 +88,7 @@ export const start = mutation({
         previous.input !== input ||
         previous.kind !== args.kind)
     )
-      throw new ConvexError(
-        "Continuation does not belong to this indexing job.",
-      );
+      throw new ConvexError("Continuation does not belong to this indexing job.");
     for (const status of ["running", "queued"] as const) {
       if (
         await ctx.db
@@ -126,8 +107,6 @@ export const start = mutation({
             .withIndex("by_handle", (q) => q.eq("handle", input))
             .unique()
         : null;
-    await budget(ctx, "xmd:global", 60);
-    await budget(ctx, `xmd:${owner}`, 12);
     const id = await ctx.db.insert("jobs", {
       owner,
       kind: args.kind,
@@ -154,8 +133,7 @@ export const claim = internalMutation({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, { jobId }) => {
     const job = await ctx.db.get(jobId);
-    if (!job || job.status !== "queued" || (job.readyAt ?? 0) > Date.now())
-      return null;
+    if (!job || job.status !== "queued" || (job.readyAt ?? 0) > Date.now()) return null;
     const attempt = job.attempt + 1;
     await ctx.db.patch(jobId, {
       status: "running",
@@ -189,8 +167,7 @@ export const cancel = mutation({
     if (!["queued", "running"].includes(job.status)) return;
     await ctx.db.patch(jobId, {
       status: "cancelled",
-      phase:
-        "Stopped; an in-flight request may still finish. Retained captures are not deleted.",
+      phase: "Stopped; an in-flight request may still finish. Retained captures are not deleted.",
       updatedAt: Date.now(),
     });
   },
@@ -212,8 +189,6 @@ export const retry = mutation({
         .first();
       if (active) throw new ConvexError("This indexing job is already active.");
     }
-    await budget(ctx, "xmd:global", 60);
-    await budget(ctx, `xmd:${owner}`, 12);
     await ctx.db.patch(jobId, {
       status: "queued",
       readyAt: 0,
@@ -254,8 +229,7 @@ export const expire = internalMutation({
     if (job?.status === "running" && job.attempt === args.attempt)
       await ctx.db.patch(job._id, {
         status: job.count ? "partial" : "failed",
-        error:
-          "Collection timed out. Only acknowledged captures are recorded; retry to continue.",
+        error: "Collection timed out. Only acknowledged captures are recorded; retry to continue.",
         updatedAt: Date.now(),
       });
   },
@@ -274,9 +248,7 @@ export const ack = internalMutation({
       throw new Error("Indexing job is no longer active.");
     const existing = await ctx.db
       .query("receipts")
-      .withIndex("by_capture", (q) =>
-        q.eq("jobId", job._id).eq("captureId", args.captureId),
-      )
+      .withIndex("by_capture", (q) => q.eq("jobId", job._id).eq("captureId", args.captureId))
       .unique();
     if (existing) return;
     await ctx.db.insert("receipts", {
@@ -315,35 +287,19 @@ export const finish = internalMutation({
   },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
-    if (!job || job.status !== "running" || job.attempt !== args.attempt)
-      return;
-    const retry =
-      args.retryAfter !== undefined && (job.pageAttempt ?? args.attempt) < 3;
+    if (!job || job.status !== "running" || job.attempt !== args.attempt) return;
+    const retry = args.retryAfter !== undefined && (job.pageAttempt ?? args.attempt) < 3;
     const pages = (job.pages ?? 0) + (args.error ? 0 : 1);
-    const wantsMore =
-      !args.error &&
-      job.kind === "bulk" &&
-      job.autoContinue &&
-      !!args.nextUntil;
+    const wantsMore = !args.error && job.kind === "bulk" && job.autoContinue && !!args.nextUntil;
     const stalled =
       wantsMore &&
       (!Number.isFinite(Date.parse(args.nextUntil!)) ||
-        (job.until !== undefined &&
-          Date.parse(args.nextUntil!) >= Date.parse(job.until)));
-    let pause = stalled
+        (job.until !== undefined && Date.parse(args.nextUntil!) >= Date.parse(job.until)));
+    const pause = stalled
       ? "Paused because x.md did not return an older page. Your downloaded posts are safe."
       : wantsMore && pages >= 20
         ? "Paused after 20 batches to limit API use. Continue when you're ready."
         : undefined;
-    if (wantsMore && !pause) {
-      try {
-        await budget(ctx, "xmd:global", 60);
-        await budget(ctx, `xmd:${job.owner}`, 12);
-      } catch {
-        pause =
-          "Paused at today's import limit. Your downloaded posts are safe. Try again tomorrow.";
-      }
-    }
     const continueImport = wantsMore && !pause;
     await ctx.db.patch(job._id, {
       status:
@@ -365,8 +321,7 @@ export const finish = internalMutation({
       nextCursor: args.nextCursor,
       expectedUserId: args.expectedUserId ?? job.expectedUserId,
       pages,
-      postsReceived:
-        (job.postsReceived ?? 0) + (args.error ? 0 : (args.postsReceived ?? 0)),
+      postsReceived: (job.postsReceived ?? 0) + (args.error ? 0 : (args.postsReceived ?? 0)),
       oldest: args.oldest ?? job.oldest,
       floorReached: args.floorReached ?? job.floorReached,
       ...(continueImport
@@ -383,11 +338,9 @@ export const finish = internalMutation({
         jobId: job._id,
       });
     if (retry)
-      await ctx.scheduler.runAfter(
-        Math.max(1000, args.retryAfter!),
-        internal.importer.run,
-        { jobId: job._id },
-      );
+      await ctx.scheduler.runAfter(Math.max(1000, args.retryAfter!), internal.importer.run, {
+        jobId: job._id,
+      });
     if (args.profile) {
       const profile = args.profile;
       const account = await ctx.db

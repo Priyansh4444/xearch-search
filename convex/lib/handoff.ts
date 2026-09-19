@@ -28,13 +28,8 @@ const receiptSchema = z.object({
 });
 export type Receipt = z.infer<typeof receiptSchema>;
 export async function captureId(body: string): Promise<string> {
-  const hash = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(body),
-  );
-  return [...new Uint8Array(hash)]
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+  return [...new Uint8Array(hash)].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 export async function deliverCapture(
   url: string,

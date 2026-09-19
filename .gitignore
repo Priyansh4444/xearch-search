@@ -2,6 +2,7 @@ node_modules/
 dist/
 .convex/
 .local-captures/
+.local-hosting/
 .env*
 !.env.example
 xearch-old/

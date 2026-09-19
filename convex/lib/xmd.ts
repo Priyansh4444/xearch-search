@@ -48,9 +48,7 @@ export function publicUrl(value: string): string {
 export function statusUrl(value: string): string {
   const url = new URL(publicUrl(value));
   if (
-    !["x.com", "www.x.com", "twitter.com", "www.twitter.com"].includes(
-      url.hostname,
-    ) ||
+    !["x.com", "www.x.com", "twitter.com", "www.twitter.com"].includes(url.hostname) ||
     !/^\/[A-Za-z0-9_]{1,15}\/status\/\d+$/.test(url.pathname)
   )
     throw new Error("Paste an X post link, including /status/ and its ID.");
@@ -61,12 +59,7 @@ export function retryDelay(value: string | null, now = Date.now()): number {
   const seconds = Number(value);
   return Math.min(
     86_400_000,
-    Math.max(
-      1000,
-      Number.isFinite(seconds)
-        ? seconds * 1000
-        : Date.parse(value) - now || 30_000,
-    ),
+    Math.max(1000, Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - now || 30_000),
   );
 }
 export class XmdClient {
@@ -83,24 +76,15 @@ export class XmdClient {
       url.password ||
       (url.pathname !== "/" && url.pathname !== "")
     )
-      throw new Error(
-        "X_MD_BASE_URL must be https://mdfromx.com or https://x.pcstyle.dev.",
-      );
+      throw new Error("X_MD_BASE_URL must be https://mdfromx.com or https://x.pcstyle.dev.");
     this.origin = url.origin;
   }
-  private async request(
-    path: string,
-    query: Record<string, string>,
-    signal?: AbortSignal,
-  ) {
+  private async request(path: string, query: Record<string, string>, signal?: AbortSignal) {
     const url = new URL(path, this.origin);
     for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
     const response = await this.fetcher(url, {
       headers: {
-        Accept:
-          query.format === "ndjson"
-            ? "application/x-ndjson"
-            : "application/json",
+        Accept: query.format === "ndjson" ? "application/x-ndjson" : "application/json",
         ...(this.key ? { Authorization: `Bearer ${this.key}` } : {}),
       },
       signal: signal ?? AbortSignal.timeout(120_000),
@@ -173,9 +157,7 @@ export class XmdClient {
     if (options.until) query.until = options.until;
     if (options.refresh) query.refresh = "true";
     return record(
-      await (
-        await this.request(`/api/v1/profiles/${handle(input)}/posts`, query)
-      ).json(),
+      await (await this.request(`/api/v1/profiles/${handle(input)}/posts`, query)).json(),
     );
   }
   async *bulk(
@@ -186,9 +168,7 @@ export class XmdClient {
       maxPosts: number;
       refresh?: boolean;
     },
-  ): AsyncGenerator<
-    RawObject & ({ post: RawObject } | { meta: RawObject; profile?: RawObject })
-  > {
+  ): AsyncGenerator<RawObject & ({ post: RawObject } | { meta: RawObject; profile?: RawObject })> {
     const query: Record<string, string> = {
       format: "ndjson",
       max_posts: String(Math.min(500, Math.max(1, options.maxPosts))),
@@ -199,15 +179,8 @@ export class XmdClient {
     if (options.since) query.since = options.since;
     if (options.until) query.until = options.until;
     if (options.refresh) query.refresh = "true";
-    const response = await this.request(
-      `/api/v1/profiles/${handle(input)}/posts`,
-      query,
-    );
-    if (!response.body)
-      throw new ProviderError(
-        "empty_stream",
-        "x.md returned no import stream.",
-      );
+    const response = await this.request(`/api/v1/profiles/${handle(input)}/posts`, query);
+    if (!response.body) throw new ProviderError("empty_stream", "x.md returned no import stream.");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let pending = "",
@@ -230,10 +203,7 @@ export class XmdClient {
           meta: record(item.meta),
           ...(item.profile ? { profile: record(item.profile) } : {}),
         };
-      throw new ProviderError(
-        "invalid_stream",
-        "x.md returned an unrecognized import record.",
-      );
+      throw new ProviderError("invalid_stream", "x.md returned an unrecognized import record.");
     };
     try {
       while (true) {

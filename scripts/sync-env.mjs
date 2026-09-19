@@ -27,8 +27,6 @@ for (const name of allowed) {
     encoding: "utf8",
   });
   if (result.status !== 0)
-    throw new Error(
-      `Sync failed for ${name}. Output suppressed to protect secrets.`,
-    );
+    throw new Error(`Sync failed for ${name}. Output suppressed to protect secrets.`);
   console.log(`Synced ${name}`);
 }

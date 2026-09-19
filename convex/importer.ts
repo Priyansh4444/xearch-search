@@ -21,11 +21,7 @@ export const run = internalAction({
           "configuration",
           "Configure X_MD_API_KEY and RAW_CAPTURE_URL to run indexing jobs.",
         );
-      const xmd = new XmdClient(
-        process.env.X_MD_API_KEY,
-        fetch,
-        process.env.X_MD_BASE_URL,
-      );
+      const xmd = new XmdClient(process.env.X_MD_API_KEY, fetch, process.env.X_MD_BASE_URL);
       const result = await collectXmd(
         xmd,
         {
@@ -39,12 +35,7 @@ export const run = internalAction({
           refresh: job.refresh,
           expectedUserId: job.expectedUserId,
         },
-        (capture) =>
-          deliverCapture(
-            process.env.RAW_CAPTURE_URL!,
-            serviceToken("capture"),
-            capture,
-          ),
+        (capture) => deliverCapture(process.env.RAW_CAPTURE_URL!, serviceToken("capture"), capture),
         async (receipt, count) => {
           await ctx.runMutation(internal.jobs.ack, {
             jobId,
@@ -87,9 +78,7 @@ export const run = internalAction({
                 handle: name.toLowerCase(),
                 userId: result.expectedUserId,
                 name: string(result.profile!.name) ?? name,
-                avatar: string(result.profile!.avatar_url)?.startsWith(
-                  "https://",
-                )
+                avatar: string(result.profile!.avatar_url)?.startsWith("https://")
                   ? string(result.profile!.avatar_url)
                   : undefined,
               }
@@ -105,9 +94,7 @@ export const run = internalAction({
             ? error.message
             : "Collection failed before a complete handoff. Acknowledged raw captures remain with the storage service.",
         retryAfter:
-          error instanceof ProviderError && error.retryable
-            ? error.retryAfter
-            : undefined,
+          error instanceof ProviderError && error.retryable ? error.retryAfter : undefined,
       });
     }
   },

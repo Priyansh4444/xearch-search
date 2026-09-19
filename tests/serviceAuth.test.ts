@@ -12,20 +12,12 @@ describe("service capability credentials", () => {
     expect(serviceToken("capture", env)).toBe("ingest");
   });
   it("never borrows the other capability's token", () => {
-    expect(
-      serviceToken("search", { RAW_CAPTURE_TOKEN: "ingest" }),
-    ).toBeUndefined();
-    expect(
-      serviceToken("capture", { SEARCH_SERVICE_TOKEN: "read" }),
-    ).toBeUndefined();
+    expect(serviceToken("search", { RAW_CAPTURE_TOKEN: "ingest" })).toBeUndefined();
+    expect(serviceToken("capture", { SEARCH_SERVICE_TOKEN: "read" })).toBeUndefined();
   });
   it("supports the existing shared credential only as an explicit legacy fallback", () => {
-    expect(serviceToken("search", { DATA_SERVICE_TOKEN: "legacy" })).toBe(
-      "legacy",
-    );
-    expect(serviceToken("capture", { DATA_SERVICE_TOKEN: "legacy" })).toBe(
-      "legacy",
-    );
+    expect(serviceToken("search", { DATA_SERVICE_TOKEN: "legacy" })).toBe("legacy");
+    expect(serviceToken("capture", { DATA_SERVICE_TOKEN: "legacy" })).toBe("legacy");
     expect(
       serviceToken("capture", {
         RAW_CAPTURE_TOKEN: "",

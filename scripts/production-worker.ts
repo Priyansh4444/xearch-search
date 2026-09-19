@@ -28,7 +28,10 @@ async function healthy() {
 console.log(
   "Production download worker started. Connections are outbound only; raw posts stay on this Mac.",
 );
-while (!stopping) {
+// `stopping` is flipped by the SIGINT/SIGTERM handlers above; the break keeps
+// the shutdown check explicit without a loop condition the linter must track.
+for (;;) {
+  if (stopping) break;
   try {
     const online = await healthy();
     const job = await client.action("worker:poll" as any, { token, online });
@@ -66,12 +69,7 @@ while (!stopping) {
             refresh: job.refresh,
             expectedUserId: job.expectedUserId,
           },
-          (capture) =>
-            deliverCapture(
-              "http://127.0.0.1:4319/captures",
-              captureToken,
-              capture,
-            ),
+          (capture) => deliverCapture("http://127.0.0.1:4319/captures", captureToken, capture),
           async (receipt, count) => {
             await report({
               event: "receipt",
@@ -100,9 +98,7 @@ while (!stopping) {
               ? error.message
               : "Download interrupted. Saved batches are safe. Retry to continue.",
           retryAfter:
-            error instanceof ProviderError && error.retryable
-              ? error.retryAfter
-              : undefined,
+            error instanceof ProviderError && error.retryable ? error.retryAfter : undefined,
         });
         console.log("Job interrupted; see its production status for details.");
       } finally {
@@ -110,9 +106,7 @@ while (!stopping) {
       }
     }
   } catch {
-    console.log(
-      "Worker connection unavailable. Retrying shortly; credentials are not logged.",
-    );
+    console.log("Worker connection unavailable. Retrying shortly; credentials are not logged.");
   }
   if (!stopping) await new Promise((resolve) => setTimeout(resolve, 5000));
 }

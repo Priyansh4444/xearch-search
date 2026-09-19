@@ -35,16 +35,13 @@ Existing x.md is used as an external service. `xearch-old` was read for its hand
 
 Inspected the user's saved history responses: three 500-post batches each reported more history, not a provider history floor. Replaced manual per-page history imports with bounded automatic continuation in the same job, including budget pauses and a non-advancing boundary check. Added received-post counts and oldest dates; moved file receipts into technical details. Used unslop to remove "handed off", "raw envelopes", and storage jargon from both import views. Synced allowlisted local environment variables without printing values, including the user's model selection. No AgentMail webhook was registered or email sent. Added tests for continuation, count idempotence, stuck boundaries, and budget pauses. 42 tests pass; full historical coverage is not claimed.
 
-
 ### 2026-09-19 — production deployment
 
 Created a separate `xearch-next` project in the Xearch team and deployed production backend and static frontend to `utmost-kudu-321`. The existing Xearch production deployment was untouched. Synced selected provider settings and separate auth keys. Registered an inbox-scoped AgentMail delivery webhook and stored its signing secret in production. Verified public HTML/assets and guest authentication plus saved-search create/read/remove. Local captures were not moved or exposed; production imports and retrieval remain disconnected. Production email sending now requires a verified email identity, with a regression test. 43 tests pass. No real email was sent and no full-history completion is claimed.
 
-
 ### 2026-09-19 — enable production imports
 
 Connected production to the temporary Mac receiver through an outbound worker. Added authenticated worker polling/reporting, single-job claims, retry due times, heartbeat expiry, and an explicit offline explanation in the dashboard. No raw post bodies are queued in Convex and no inbound port or tunnel was opened. A real production profile-read job completed with one durable receipt; the frontend was republished with import controls enabled while the worker is online. 46 tests pass plus production build. The worker requires the Mac to remain running. Full-history coverage, production search, and email sending are not claimed.
-
 
 ### 2026-09-19 - repository setup
 

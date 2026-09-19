@@ -56,7 +56,7 @@ describe("Effect search response contract", () => {
     null,
     {},
     { rows: null },
-    { rows: Array(21).fill(post) },
+    { rows: Array.from({ length: 21 }, () => ({ ...post })) },
     { rows: [], nextCursor: "a".repeat(4001) },
     { rows: [], warnings: Array(11).fill("warning") },
     { rows: [], warnings: ["a".repeat(501)] },
@@ -66,7 +66,7 @@ describe("Effect search response contract", () => {
   });
   it("accepts the existing maximum page and cursor lengths", () => {
     const result = decodeSearchResponse({
-      rows: Array(20).fill(post),
+      rows: Array.from({ length: 20 }, () => ({ ...post })),
       nextCursor: "a".repeat(4000),
       warnings: Array(10).fill("a".repeat(500)),
     });

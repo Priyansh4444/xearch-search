@@ -12,14 +12,14 @@ This follows the boundary in the [previous acquisition ADR](https://github.com/P
 
 ## Meaningful use of the sponsor tools
 
-| Tool | Product work |
-| --- | --- |
-| Convex | Guest sessions, private saved searches/bookmarks, indexing job scheduling, atomic receipt/checkpoint updates, bounded retries, live search-session updates, and email delivery state. |
-| x.md | Bulk account histories, incremental top-ups, historical continuation, metric refresh, profile reads, post/thread context, live search, archive inspection, followers/following. Both official hosts are configurable. |
-| Firecrawl | Read the actual page behind a post's link; search the web for context around the current X query. Hand original provider responses to the same downstream raw-capture receiver when connected. |
-| OpenAI | Interpret a natural-language request as an editable keyword/author query. Does not silently change a submitted query. |
-| AgentMail | Send an explicitly requested result digest and subscribe to delivery state through its Convex component. |
-| Codex | Build, inspect reference interfaces, run contract tests and browser verification, and maintain an evidence-based hackathon log. Codex is the development tool, not an invented runtime dependency. |
+| Tool      | Product work                                                                                                                                                                                                          |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Convex    | Guest sessions, private saved searches/bookmarks, indexing job scheduling, atomic receipt/checkpoint updates, bounded retries, live search-session updates, and email delivery state.                                 |
+| x.md      | Bulk account histories, incremental top-ups, historical continuation, metric refresh, profile reads, post/thread context, live search, archive inspection, followers/following. Both official hosts are configurable. |
+| Firecrawl | Read the actual page behind a post's link; search the web for context around the current X query. Hand original provider responses to the same downstream raw-capture receiver when connected.                        |
+| OpenAI    | Interpret a natural-language request as an editable keyword/author query. Does not silently change a submitted query.                                                                                                 |
+| AgentMail | Send an explicitly requested result digest and subscribe to delivery state through its Convex component.                                                                                                              |
+| Codex     | Build, inspect reference interfaces, run contract tests and browser verification, and maintain an evidence-based hackathon log. Codex is the development tool, not an invented runtime dependency.                    |
 
 Convex retains bounded, temporary search-page and web-preview snapshots for the interface, plus deliberately saved bookmarks. It contains no corpus table, full-text index, token postings, tokenizer, ranking engine, or normalization implementation. Search sessions and preview caches expire after a day.
 

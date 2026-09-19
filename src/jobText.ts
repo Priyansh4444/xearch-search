@@ -22,9 +22,7 @@ export function jobSummary(job: Doc<"jobs">) {
       ? "This older import saved a batch of posts. Its post count wasn't tracked."
       : "Waiting for the next batch of posts";
   }
-  return job.status === "complete"
-    ? "Response saved"
-    : (job.phase ?? "Waiting to start");
+  return job.status === "complete" ? "Response saved" : (job.phase ?? "Waiting to start");
 }
 export function jobWarnings(job: Doc<"jobs">) {
   return job.warnings.filter(

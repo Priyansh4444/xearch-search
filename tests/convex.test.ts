@@ -23,6 +23,22 @@ async function setup() {
   };
 }
 describe("Convex application boundaries", () => {
+  it("starts and retries imports despite exhausted legacy daily budgets", async () => {
+    const { t, a, alice } = await setup();
+    vi.stubEnv("COLLECTOR_MODE", "outbound");
+    vi.stubEnv("X_MD_API_KEY", "test");
+    await t.mutation(internal.worker.heartbeat, { online: true });
+    await t.run(async (ctx) => {
+      const day = new Date().toISOString().slice(0, 10);
+      await ctx.db.insert("budgets", { key: `${day}:xmd:global`, count: 60 });
+      await ctx.db.insert("budgets", { key: `${day}:xmd:${alice}`, count: 12 });
+    });
+    const jobId = await a.mutation(api.jobs.start, { kind: "profile", input: "example" });
+    expect((await t.run((ctx) => ctx.db.get(jobId)))?.status).toBe("queued");
+    await a.mutation(api.jobs.cancel, { jobId });
+    await a.mutation(api.jobs.retry, { jobId });
+    expect((await t.run((ctx) => ctx.db.get(jobId)))?.status).toBe("queued");
+  });
   it("publishes Effect-decoded search results through the existing service contract", async () => {
     const { t, a, b, alice } = await setup();
     vi.stubEnv("SEARCH_API_URL", "https://search.example/query");
@@ -77,13 +93,13 @@ describe("Convex application boundaries", () => {
       "fetch",
       vi.fn<typeof fetch>(async () =>
         Response.json({
-          rows: Array(21).fill({
+          rows: Array.from({ length: 21 }, () => ({
             tweetId: "123",
             author: "example",
             text: "convex",
             url: "https://x.com/example/status/123",
             links: [],
-          }),
+          })),
         }),
       ),
     );
@@ -266,7 +282,7 @@ describe("Convex application boundaries", () => {
     expect(job?.error).toContain("did not return an older page");
     expect(job?.nextUntil).toBeUndefined();
   });
-  it("keeps the last saved boundary when automatic imports hit their budget", async () => {
+  it("continues automatic imports despite exhausted legacy daily budgets", async () => {
     const { t, alice } = await setup();
     const jobId = await t.run(async (ctx) => {
       await ctx.db.insert("budgets", {
@@ -294,11 +310,12 @@ describe("Convex application boundaries", () => {
       nextUntil: "2026-06-01",
     });
     expect(await t.run((ctx) => ctx.db.get(jobId))).toMatchObject({
-      status: "complete",
+      status: "queued",
       postsReceived: 500,
       nextUntil: "2026-06-01",
+      until: "2026-06-01",
     });
-    expect((await t.run((ctx) => ctx.db.get(jobId)))?.error).toContain("import limit");
+    expect((await t.run((ctx) => ctx.db.get(jobId)))?.error).toBeUndefined();
   });
   it("owns cancellation and rejects progress from a stopped worker", async () => {
     const { t, a, b, alice } = await setup();

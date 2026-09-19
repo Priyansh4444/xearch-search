@@ -31,8 +31,7 @@ export const start = mutation({
       throw new ConvexError(
         "The search service is not connected yet. Configure SEARCH_API_URL to use your corpus.",
       );
-    if ((args.cursor?.length ?? 0) > 4000)
-      throw new ConvexError("Invalid cursor.");
+    if ((args.cursor?.length ?? 0) > 4000) throw new ConvexError("Invalid cursor.");
     await budget(ctx, `search:${owner}`, 200);
     const id = await ctx.db.insert("sessions", {
       owner,
@@ -53,8 +52,7 @@ export const results = query({
   handler: async (ctx, { sessionId }) => {
     const owner = await user(ctx);
     const session = await ctx.db.get(sessionId);
-    if (!session || session.owner !== owner)
-      throw new ConvexError("Search session not found.");
+    if (!session || session.owner !== owner) throw new ConvexError("Search session not found.");
     return session;
   },
 });
@@ -72,12 +70,7 @@ export const complete = internalMutation({
   },
   handler: async (ctx, { sessionId, ...rest }) => {
     const session = await ctx.db.get(sessionId);
-    if (
-      !session ||
-      session.status === "failed" ||
-      session.status === "complete"
-    )
-      return;
+    if (!session || session.status === "failed" || session.status === "complete") return;
     await ctx.db.patch(sessionId, {
       ...rest,
       status: rest.error ? "failed" : "complete",
@@ -98,10 +91,7 @@ export const expire = internalMutation({
 export const execute = internalAction({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, { sessionId }): Promise<void> => {
-    const session: Doc<"sessions"> | null = await ctx.runQuery(
-      internal.search.get,
-      { sessionId },
-    );
+    const session: Doc<"sessions"> | null = await ctx.runQuery(internal.search.get, { sessionId });
     if (!session || session.status !== "queued") return;
     try {
       const parsed = parseQuery(session.raw);
@@ -109,9 +99,7 @@ export const execute = internalAction({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(serviceToken("search")
-            ? { Authorization: `Bearer ${serviceToken("search")}` }
-            : {}),
+          ...(serviceToken("search") ? { Authorization: `Bearer ${serviceToken("search")}` } : {}),
         },
         body: JSON.stringify({
           version: 1,
@@ -159,10 +147,8 @@ export const save = mutation({
       .query("saved")
       .withIndex("by_owner", (q) => q.eq("owner", owner))
       .take(31);
-    if (saved.some((s) => s.query === args.raw.trim() && s.sort === args.sort))
-      return;
-    if (saved.length >= 30)
-      throw new ConvexError("You can save 30 searches. Remove one first.");
+    if (saved.some((s) => s.query === args.raw.trim() && s.sort === args.sort)) return;
+    if (saved.length >= 30) throw new ConvexError("You can save 30 searches. Remove one first.");
     await ctx.db.insert("saved", {
       owner,
       query: args.raw.trim(),
@@ -197,19 +183,14 @@ export const bookmark = mutation({
     const owner = await user(ctx);
     const existing = await ctx.db
       .query("bookmarks")
-      .withIndex("by_post", (q) =>
-        q.eq("owner", owner).eq("post.tweetId", tweetId),
-      )
+      .withIndex("by_post", (q) => q.eq("owner", owner).eq("post.tweetId", tweetId))
       .unique();
     if (existing) {
       await ctx.db.delete(existing._id);
       return;
     }
     const session = sessionId ? await ctx.db.get(sessionId) : null;
-    const post =
-      session?.owner === owner
-        ? session.rows.find((p) => p.tweetId === tweetId)
-        : null;
+    const post = session?.owner === owner ? session.rows.find((p) => p.tweetId === tweetId) : null;
     if (!post) throw new ConvexError("Post not found in your search session.");
     if (
       (

@@ -1,0 +1,22 @@
+[Unit]
+Description=Xearch production download worker
+Requires=xearch-capture.service
+After=network-online.target xearch-capture.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/exedev/xearch
+ExecStart=/home/exedev/.local/bin/bun run worker:production
+Restart=always
+RestartSec=5s
+UMask=0077
+StandardOutput=append:/home/exedev/xearch/.local-captures/logs/production-worker.log
+StandardError=append:/home/exedev/xearch/.local-captures/logs/production-worker.log
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/exedev/xearch/.local-captures
+
+[Install]
+WantedBy=default.target
