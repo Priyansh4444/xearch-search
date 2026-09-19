@@ -1,0 +1,20 @@
+[Unit]
+Description=Xearch loopback capture receiver
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/exedev/xearch
+ExecStart=/usr/bin/node scripts/capture-server.mjs
+Restart=always
+RestartSec=5s
+UMask=0077
+StandardOutput=append:/home/exedev/xearch/.local-captures/logs/capture.log
+StandardError=append:/home/exedev/xearch/.local-captures/logs/capture.log
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/exedev/xearch/.local-captures
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=Xearch production frontend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/exedev/xearch
+ExecStart=/usr/sbin/nginx -c /home/exedev/xearch/deploy/nginx/xearch.conf -p /home/exedev/xearch/.local-hosting/
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/exedev/xearch/.local-hosting
+
+[Install]
+WantedBy=default.target
