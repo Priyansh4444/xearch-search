@@ -292,6 +292,7 @@ impl SearchBackend for Engine {
             })
             .collect::<Result<Vec<Post>>>()?;
         let next_offset = offset.saturating_add(rows.len());
+        let at_window = offset.saturating_add(request.limit) >= MAX_WINDOW;
         let next_cursor = if more && next_offset < MAX_WINDOW {
             Some(
                 serde_json::to_string(&Cursor {
@@ -304,7 +305,12 @@ impl SearchBackend for Engine {
         } else {
             None
         };
-        let warnings = if more && next_offset >= MAX_WINDOW {
+        // When this page sits within one page of the window edge, a short
+        // final page may be the window cut short rather than a real end of
+        // results — say so instead of dropping the remainder silently.
+        let warnings = if more && next_offset >= MAX_WINDOW
+            || (!more && at_window && rows.len() < request.limit)
+        {
             vec!["Result window capped at 10,000. Narrow your query.".into()]
         } else {
             Vec::new()

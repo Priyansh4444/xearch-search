@@ -86,6 +86,10 @@ pub struct UserRecord {
     /// `size:mtime` of the last imported file; cleared to force reimport.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_sig: Option<String>,
+    /// Drop filename backing the last import, so two files normalizing to
+    /// the same handle cannot oscillate against one signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
     pub updated_at_ms: i64,
 }
 
@@ -99,17 +103,27 @@ impl UserRecord {
             sha256: None,
             last_error: None,
             file_sig: None,
+            file_name: None,
             updated_at_ms: now,
         }
     }
 }
 
 /// The registry file: versioned map of handle to record.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Registry {
     pub version: u8,
     #[serde(default)]
     pub users: HashMap<String, UserRecord>,
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            users: HashMap::new(),
+        }
+    }
 }
 
 fn now_ms() -> i64 {
@@ -171,14 +185,26 @@ impl Registry {
     }
 
     /// Mark a successful import. Zero accepted posts is an error, not a
-    /// completion, so empty retries stay visible.
-    pub fn mark_complete(&mut self, handle: &str, receipt: &Receipt, file_sig: &str) {
+    /// completion, so empty dumps stay visible and retryable.
+    pub fn mark_complete(
+        &mut self,
+        handle: &str,
+        receipt: &Receipt,
+        file_sig: &str,
+        file_name: &str,
+    ) {
         let now = now_ms();
         let record = self.record(handle);
         record.attempts = record.attempts.saturating_add(1);
         if receipt.accepted == 0 {
             record.status = UserStatus::Error;
-            record.last_error = Some(format!("No posts accepted; {} rejected.", receipt.rejected));
+            record.last_error = Some(format!(
+                "No posts accepted; {} quarantined.",
+                receipt.rejected
+            ));
+            record.accepted = 0;
+            record.rejected = 0;
+            record.sha256 = None;
         } else {
             record.status = UserStatus::Complete;
             record.accepted = receipt.accepted;
@@ -187,18 +213,22 @@ impl Registry {
             record.last_error = None;
         }
         record.file_sig = Some(file_sig.to_owned());
+        record.file_name = Some(file_name.to_owned());
         record.updated_at_ms = now;
     }
 
     /// Mark a failed attempt with its reason; attempts accumulate for backoff
     /// and triage. The file signature is left alone so the next pass retries
     /// the same bytes.
-    pub fn mark_error(&mut self, handle: &str, reason: &str) {
+    pub fn mark_error(&mut self, handle: &str, reason: &str, file_name: Option<&str>) {
         let now = now_ms();
         let record = self.record(handle);
         record.attempts = record.attempts.saturating_add(1);
         record.status = UserStatus::Error;
         record.last_error = Some(reason.to_owned());
+        if let Some(name) = file_name {
+            record.file_name = Some(name.to_owned());
+        }
         record.updated_at_ms = now;
     }
 

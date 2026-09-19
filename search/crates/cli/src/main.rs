@@ -96,8 +96,8 @@ fn run_import(
     archive: &std::path::Path,
 ) -> color_eyre::Result<()> {
     let engine = search_tantivy::open(index, true)?;
-    let mut writer = engine.writer()?;
-    let receipt = search_ingest::import(input, archive, &mut writer)?;
+    let writer = engine.writer()?;
+    let receipt = search_ingest::import(input, archive, writer)?;
     println!("{}", serde_json::to_string(&receipt)?);
     Ok(())
 }

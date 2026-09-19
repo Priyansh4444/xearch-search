@@ -1,3 +1,32 @@
+# Xearch background search indexer (Rust drop-dir watcher).
+#
+# How it works:
+#   The Rust binary `xearch-search watch` polls $SEARCH_DROP_DIR for
+#   <handle>.json/.jsonl intake dumps and imports each due user into the
+#   Tantivy index under $SEARCH_INDEX_DIR, keeping a per-user
+#   complete/incomplete/error registry in $SEARCH_STATE_DIR/users.json.
+#   Imports are content-addressed and replays are idempotent, so restarts
+#   and crashes are safe by construction.
+#
+# Machine setup (on the intake machine):
+#   1. Build the release binary:  cd <repo>/search && cargo build --release -p xearch-search
+#   2. Install this unit:         cp deploy/systemd/xearch-search-indexer.service ~/.config/systemd/user/
+#   3. Point BASE at your data root if you don't use the default (edit the
+#      Environment=SEARCH_BASE_DIR line, or `systemctl --user edit` an override).
+#   4. mkdir -p "$BASE"/{index,archive,drop,state,logs}
+#   5. systemctl --user daemon-reload
+#
+# Do NOT enable/start without approval from the operator of the machine.
+#
+# Status and control (prefer scripts/search-index-ctl.sh):
+#   systemctl --user status xearch-search-indexer.service
+#   tail -f "$BASE"/logs/indexer.log
+#   xearch-search --base-dir "$BASE" users list
+#
+# Note: systemd expands ${VAR} in arguments but NOT in the ExecStart
+# executable position nor in StandardOutput/StandardError paths, so those
+# use %h specifiers and literal paths below. If your checkout lives
+# elsewhere, change BIN once.
 [Unit]
 Description=Xearch background search indexer (Rust drop-dir watcher)
 After=network.target
@@ -10,12 +39,12 @@ UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
+Environment=BASE=%h/xearch-search
 Environment=SEARCH_BASE_DIR=%h/xearch-search
-Environment=SEARCH_BIN=%h/Coding/xearch/search/target/release/xearch-search
-ReadWritePaths=%h
-ExecStart=${SEARCH_BIN} --base-dir ${SEARCH_BASE_DIR} watch
-StandardOutput=append:${SEARCH_BASE_DIR}/logs/indexer.log
-StandardError=append:${SEARCH_BASE_DIR}/logs/indexer.log
+ReadWritePaths=%h/xearch-search
+ExecStart=%h/Coding/xearch/search/target/release/xearch-search --base-dir %h/xearch-search watch
+StandardOutput=append:%h/xearch-search/logs/indexer.log
+StandardError=append:%h/xearch-search/logs/indexer.log
 
 [Install]
 WantedBy=default.target

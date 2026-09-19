@@ -19,5 +19,6 @@ sha2.workspace = true
 hex.workspace = true
 [dev-dependencies]
 search-tantivy.workspace = true
+search-ingest.workspace = true
 tempfile.workspace = true
 tower = { version = "0.5", features = ["util"] }

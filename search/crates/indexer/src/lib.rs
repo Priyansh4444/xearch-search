@@ -14,6 +14,7 @@
 pub mod users;
 
 use search_model::{Error, Result};
+use sha2::Digest;
 use std::{
     path::{Path, PathBuf},
     time::Duration,
@@ -60,19 +61,13 @@ impl Config {
     }
 }
 
-fn storage(error: impl std::fmt::Display) -> Error {
-    Error::Storage(error.to_string())
-}
-
-/// Signature used to skip unchanged files between passes.
-fn signature(metadata: &std::fs::Metadata) -> Option<String> {
-    let modified = metadata
-        .modified()
-        .ok()?
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_millis();
-    Some(format!("{}:{modified}", metadata.len()))
+/// Content-hash signature. Unlike size:mtime, a same-size edit with a
+/// restored or coarse mtime can never pass as unchanged.
+fn signature(file: &Path) -> Option<String> {
+    let bytes = std::fs::read(file).ok()?;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(&bytes);
+    Some(format!("{:x}", hasher.finalize()))
 }
 
 fn candidates(drop_dir: &Path) -> Vec<PathBuf> {
@@ -101,8 +96,11 @@ fn handle_for(file: &Path) -> Option<String> {
 
 /// Import every due dump once, updating the registry.
 ///
-/// A user is due when its status is not `complete`, or when its file changed
-/// since the last import. Returns the registry for inspection.
+/// A user is due when its status is not `complete`, or when the bytes of
+/// its recorded file changed. Files whose handle already belongs to a
+/// different path are skipped with a warning until the operator removes the
+/// collision — two files fighting over one registry entry would otherwise
+/// reimport against each other every pass. Returns the registry.
 ///
 /// # Errors
 /// Returns [`Error::Storage`] if the index cannot be opened or the registry
@@ -116,8 +114,26 @@ pub fn run_once(config: &Config) -> Result<Registry> {
             eprintln!("indexer skip file={} unusable handle", file.display());
             continue;
         };
-        let metadata = std::fs::metadata(&file).map_err(storage)?;
-        let Some(sig) = signature(&metadata) else {
+        let Some(file_name) = file.file_name().and_then(|n| n.to_str()).map(str::to_owned) else {
+            continue;
+        };
+        let conflicted = {
+            let record = registry.record(&handle);
+            record
+                .file_name
+                .as_deref()
+                .is_some_and(|existing| existing != file_name)
+        };
+        if conflicted {
+            eprintln!(
+                "indexer skip user={handle}: {} collides with {}",
+                file_name,
+                registry.record(&handle).file_name.as_deref().unwrap_or("?")
+            );
+            continue;
+        }
+        let Some(sig) = signature(&file) else {
+            eprintln!("indexer skip file={} unreadable", file.display());
             continue;
         };
         let due = {
@@ -127,17 +143,25 @@ pub fn run_once(config: &Config) -> Result<Registry> {
         if !due {
             continue;
         }
-        let mut writer = engine.writer()?;
-        match search_ingest::import(&file, &config.archive, &mut writer) {
+        let writer = match engine.writer() {
+            Ok(writer) => writer,
+            Err(error) => {
+                registry.mark_error(&handle, &error.to_string(), Some(&file_name));
+                eprintln!("indexer err user={handle} {error}");
+                registry.save(&path)?;
+                continue;
+            }
+        };
+        match search_ingest::import(&file, &config.archive, writer) {
             Ok(receipt) => {
-                registry.mark_complete(&handle, &receipt, &sig);
+                registry.mark_complete(&handle, &receipt, &sig, &file_name);
                 eprintln!(
                     "indexer ok user={handle} accepted={} rejected={}",
                     receipt.accepted, receipt.rejected
                 );
             }
             Err(error) => {
-                registry.mark_error(&handle, &error.to_string());
+                registry.mark_error(&handle, &error.to_string(), Some(&file_name));
                 eprintln!("indexer err user={handle} {error}");
             }
         }
@@ -195,7 +219,7 @@ mod tests {
             "id": id,
             "author": {"screen_name": handle, "id": "42"},
             "text": "hello world",
-            "created_timestamp": 1758000000_i64,
+            "created_timestamp": 1_758_000_000_i64,
         })
     }
 
@@ -279,5 +303,51 @@ mod tests {
             2,
             "cleared signature must reimport"
         );
+    }
+
+    #[test]
+    fn same_size_edit_reimports_via_content_hash() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = config_in(dir.path());
+        let path = config.drop_dir.join("edituser.json");
+        std::fs::write(&path, r#"{"posts":[]}"#).expect("write dump");
+        // Same-length edit inside the same clock tick would defeat mtime.
+        let first = r#"{"posts":[{"id":"3001","author":{"screen_name":"edituser","id":"7"},"text":"alpha","created_timestamp":1758000000}]}"#;
+        std::fs::write(&path, first).expect("write v1");
+        run_once(&config).expect("first pass");
+        let second = first.replace("alpha", "omega");
+        assert_eq!(first.len(), second.len(), "same-size precondition");
+        std::fs::write(&path, second).expect("write v2");
+        let registry = run_once(&config).expect("second pass");
+        let record = registry.users.get("edituser").expect("record");
+        assert_eq!(
+            record.status,
+            UserStatus::Complete,
+            "changed bytes must reimport even at same size"
+        );
+        assert_eq!(record.accepted, 1);
+        assert_eq!(record.attempts, 2);
+    }
+
+    #[test]
+    fn colliding_handles_skip_instead_of_oscillate() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = config_in(dir.path());
+        for (name, id) in [("Alice.json", "4001"), ("alice.json", "4002")] {
+            std::fs::write(
+                config.drop_dir.join(name),
+                serde_json::to_string(&serde_json::json!({"posts": [post(id, "Alice")] }))
+                    .expect("json"),
+            )
+            .expect("write dump");
+        }
+        for pass in 1..=3 {
+            let registry = run_once(&config).expect("pass");
+            let record = registry.users.get("alice").expect("record");
+            assert_eq!(
+                record.attempts, 1,
+                "collision must not reimport on pass {pass}"
+            );
+        }
     }
 }
