@@ -39,7 +39,6 @@ $BASE/archive/  Content-addressed originals:
                 <sha256>.rejected.jsonl    quarantined records + reasons
 $BASE/drop/     Intake: <handle>.json dumps or <sha256>.json capture batches
 $BASE/state/    users.json — the per-user retry registry
-$BASE/logs/     indexer.log
 ```
 
 Raw input is never mutated; re-importing the same bytes converges to the
@@ -179,6 +178,12 @@ systemctl --user daemon-reload
 # then: systemctl --user start xearch-search-indexer.service  (needs operator approval)
 ```
 
+The unit defaults `SEARCH_BASE_DIR` to `~/xearch-search`. Override it with a
+systemd drop-in (for example, `systemctl --user edit xearch-search-indexer`)
+and set `Environment=SEARCH_BASE_DIR=/absolute/path`. Indexer output goes to
+the user journal; inspect it with
+`journalctl --user -u xearch-search-indexer.service`.
+
 Local/manual control (no systemd needed):
 
 ```sh
@@ -228,5 +233,5 @@ left to the integration layer.
 
 1. Drop `<handle>.json` intake dumps into `$BASE/drop/`.
 2. Keep `search-index-ctl.sh continue` (or the systemd unit) running.
-3. Watch `users list --status error` and `logs/indexer.log`.
+3. Watch `users list --status error` and `search-index-ctl.sh logs`.
 4. Postings grow in `$BASE/index`; the app fetches results from `serve`.

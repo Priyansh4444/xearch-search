@@ -173,7 +173,13 @@ case "${1:-status}" in
   restart) do_stop; sleep 1; do_start ;;
   continue) do_start ;; # keep running while things move; no-op if up
   status) do_status ;;
-  logs) mkdir -p "$BASE/logs"; exec tail -f "$BASE/logs/indexer.log" ;;
+  logs)
+    if unit_installed; then
+      exec journalctl --user -fu "$UNIT"
+    fi
+    mkdir -p "$BASE/logs"
+    exec tail -f "$BASE/logs/indexer.log"
+    ;;
   users) shift; build; exec "$BIN" --base-dir "$BASE" users "$@" ;;
   *) echo "usage: $0 {install|start|stop|restart|continue|status|logs|users ...}" >&2; exit 1 ;;
 esac

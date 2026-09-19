@@ -28,7 +28,7 @@ pub mod users;
 use search_model::{Error, Result};
 use sha2::Digest;
 use std::{
-    io::Read,
+    io::{Read, Write},
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -48,7 +48,7 @@ pub struct Config {
     pub index: PathBuf,
     /// Content-addressed archive directory.
     pub archive: PathBuf,
-    /// Polled drop directory holding `<handle>.json[.l]` dumps and
+    /// Polled drop directory holding `<handle>.json` dumps and
     /// `<sha256>.json` capture batches.
     pub drop_dir: PathBuf,
     /// Directory holding `users.json` and `indexer.lock`.
@@ -136,19 +136,22 @@ pub fn acquire_exclusive(state_dir: &Path, kind: &str) -> Result<LockGuard> {
     std::fs::create_dir_all(state_dir).map_err(storage)?;
     let path = lock_path(state_dir);
     for attempt in 0..40_u32 {
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
-            Ok(mut file) => {
-                use std::io::Write;
-                writeln!(file, "{} {kind}", std::process::id()).map_err(storage)?;
-                file.sync_all().map_err(storage)?;
+        let mut pending = tempfile::NamedTempFile::new_in(state_dir).map_err(storage)?;
+        writeln!(pending, "{} {kind}", std::process::id()).map_err(storage)?;
+        pending.as_file().sync_all().map_err(storage)?;
+        match std::fs::hard_link(pending.path(), &path) {
+            Ok(()) => {
                 return Ok(LockGuard { path });
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                let text = std::fs::read_to_string(&path).unwrap_or_default();
+                let text = match std::fs::read_to_string(&path) {
+                    Ok(text) => text,
+                    Err(_) if attempt < 30 => {
+                        std::thread::sleep(Duration::from_millis(100));
+                        continue;
+                    }
+                    Err(error) => return Err(storage(error)),
+                };
                 match lock_holder(&text) {
                     Some((pid, holder_kind)) if holds_our_lock(pid) => {
                         if holder_kind == "mark" && kind == "watch" && attempt < 30 {
@@ -159,9 +162,18 @@ pub fn acquire_exclusive(state_dir: &Path, kind: &str) -> Result<LockGuard> {
                             "Another indexer is running (pid {pid}). Stop it before starting a second one."
                         )));
                     }
-                    _ => {
+                    Some(_) => {
                         // Dead or unrelated holder: reclaim.
                         let _ = std::fs::remove_file(&path);
+                    }
+                    None if attempt < 30 => {
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                    None => {
+                        return Err(Error::Invalid(
+                            "The indexer lock is unreadable; remove indexer.lock if no indexer runs."
+                                .into(),
+                        ));
                     }
                 }
             }
@@ -472,12 +484,13 @@ pub async fn watch(config: Config) -> Result<()> {
 /// Resolves on SIGTERM so `systemctl --user stop` releases the lock.
 async fn terminated() {
     #[cfg(unix)]
-    if let Ok(mut signal) =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-    {
-        signal.recv().await;
+    match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+        Ok(mut signal) => {
+            signal.recv().await;
+            return;
+        }
+        Err(error) => eprintln!("indexer warning: SIGTERM handler unavailable: {error}"),
     }
-    #[cfg(not(unix))]
     std::future::pending::<()>().await;
 }
 
@@ -489,13 +502,14 @@ async fn watch_loop(config: &Config) -> Result<()> {
              index directory: rebuild it from the archive; see docs/search-indexer.md): {error}"
         );
     }
+    let mut termination = std::pin::pin!(terminated());
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 eprintln!("indexer stopping");
                 return Ok(());
             }
-            () = terminated() => {
+            () = &mut termination => {
                 eprintln!("indexer stopping (terminated)");
                 return Ok(());
             }
@@ -641,7 +655,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let config = config_in(dir.path());
         std::fs::write(
-            config.drop_dir.join("Alice.json"),
+            config.drop_dir.join("@alice.json"),
             user_dump("4001", "Alice"),
         )
         .expect("write dump");
@@ -659,10 +673,21 @@ mod tests {
             );
         }
         // Removing the recorded file lets the surviving file take over.
-        std::fs::remove_file(config.drop_dir.join("Alice.json")).expect("remove winner");
+        let registry = Registry::load(&registry_path(&config.state_dir)).expect("registry");
+        let winner = registry
+            .users
+            .get("alice")
+            .and_then(|record| record.file_name.as_deref())
+            .expect("winner");
+        let survivor = if winner == "@alice.json" {
+            "alice.json"
+        } else {
+            "@alice.json"
+        };
+        std::fs::remove_file(config.drop_dir.join(winner)).expect("remove winner");
         let registry = run_once(&config).expect("rebind pass");
         let record = registry.users.get("alice").expect("record");
-        assert_eq!(record.file_name.as_deref(), Some("alice.json"));
+        assert_eq!(record.file_name.as_deref(), Some(survivor));
         assert_eq!(record.attempts, 2, "renamed file must be picked up");
     }
 
