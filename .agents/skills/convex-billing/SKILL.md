@@ -11,7 +11,7 @@ Wire Stripe to Convex using @convex-dev/stripe: a checkout action, an httpAction
 
 ## Workflow
 
-1. Install the component with Bun: `bun add @convex-dev/stripe`. Commit the resulting `bun.lock` update.
+1. Install the required component version with Bun: `bun add @convex-dev/stripe@^0.1.4`. Commit the resulting `bun.lock` update.
 2. Create `convex/convex.config.ts`:
    ```ts
    import { defineApp } from 'convex/server';
