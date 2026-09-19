@@ -62,7 +62,7 @@ export const start = mutation({
       : null;
     if (outbound && (!worker?.online || Date.now() - worker.lastSeen > 45_000))
       throw new ConvexError(
-        "The download worker is offline. Start it on your Mac, then try again.",
+        "The download worker is offline. Imports will resume when it reconnects.",
       );
     if (!process.env.X_MD_API_KEY || (!outbound && !process.env.RAW_CAPTURE_URL))
       throw new ConvexError(
