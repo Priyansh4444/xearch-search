@@ -12,11 +12,12 @@ Walk the user's own registrar through pointing their domain at the Convex app: i
 ## Workflow
 
 1. Identify the target: the published site host (for `*.convex.app` static hosting) or the deployment's HTTP actions URL.
-2. Detect an ALREADY-AUTHENTICATED DNS CLI for the user's provider and OFFER to create the records automatically: Cloudflare → `flarectl dns create` (note: `wrangler` itself doesn't manage DNS records) or the CF API via their token env; Route53 → `aws route53 change-resource-record-sets`; Google Cloud DNS → `gcloud dns record-sets create`; DigitalOcean → `doctl compute domain records create`; Vercel DNS → `vercel dns add`. Check auth read-only first (`flarectl user info` / `aws sts get-caller-identity` / `doctl account get`); show the exact commands and get a yes before running.
-3. If no authed CLI (or the user declines), tell the user exactly which records to create at THEIR registrar: the CNAME (or A/ALIAS at the apex) plus the TXT verification record — with concrete host/value strings, not placeholders.
-4. Attach the domain as a Convex custom domain (dashboard or CLI) and wait for verification; note DNS propagation can take minutes to hours. Verify records landed with `dig +short`.
-5. If the app uses auth (passkeys/OAuth), rebind the auth origin (SITE_URL / RP_ID / ORIGIN env vars) to the new domain and re-deploy/re-publish.
-6. Verify: the domain serves the app over HTTPS, including the apex → www redirect if configured.
+2. Attach the domain through Convex Deployment Settings or the supported management API so Convex displays the exact DNS records. Do not invent a dedicated Convex CLI domain-attach command.
+3. Detect an ALREADY-AUTHENTICATED DNS CLI for the user's provider and OFFER to create those displayed records automatically: Cloudflare → `flarectl dns create` (note: `wrangler` itself doesn't manage DNS records) or the CF API via their token env; Route53 → `aws route53 change-resource-record-sets`; Google Cloud DNS → `gcloud dns record-sets create`; DigitalOcean → `doctl compute domain records create`; Vercel DNS → `vercel dns add`. Check auth read-only first (`flarectl user info` / `aws sts get-caller-identity` / `doctl account get`); show the exact commands and get a yes before running.
+4. If no authed CLI (or the user declines), tell the user exactly which displayed records to create at THEIR registrar: the CNAME (or A/ALIAS at the apex) plus the TXT verification record — with concrete host/value strings, not placeholders.
+5. Wait for Convex verification; DNS propagation can take minutes to hours. Verify the displayed CNAME with `dig +short CNAME <host>` (or the displayed A record with `dig +short A <host>`) and verify the required TXT record separately with `dig +short TXT <host>`.
+6. When the domain serves Convex functions, set the frontend's `VITE_CONVEX_URL` and any function-side `CONVEX_CLOUD_URL` override to the custom cloud URL; for HTTP actions, override `CONVEX_SITE_URL`. Republish the frontend when the cloud URL changes. If the app uses auth (passkeys/OAuth), also rebind its auth origin (`SITE_URL` / `RP_ID` / `ORIGIN`) and re-deploy/re-publish.
+7. Verify: the domain serves the app over HTTPS, including the apex → www redirect if configured.
 
 ## Rules
 

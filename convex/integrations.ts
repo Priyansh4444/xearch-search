@@ -27,7 +27,7 @@ export const configured = query({
       indexing: !!process.env.X_MD_API_KEY && saving,
       search: !!process.env.SEARCH_API_URL,
       handoff: saving,
-      collectorMode: outbound ? "outbound" : "receiver",
+      collectorMode: outbound ? ("outbound" as const) : ("receiver" as const),
       firecrawl: !!process.env.FIRECRAWL_API_KEY,
       openai: !!process.env.OPENAI_API_KEY,
       email: !!process.env.AGENTMAIL_API_KEY && !!process.env.AGENTMAIL_INBOX_ID,

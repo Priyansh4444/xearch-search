@@ -11,7 +11,7 @@ Wire Stripe to Convex using @convex-dev/stripe: a checkout action, an httpAction
 
 ## Workflow
 
-1. Install the component: `npm install @convex-dev/stripe`.
+1. Install the required component version with Bun: `bun add @convex-dev/stripe@^0.1.4`. Commit the resulting `bun.lock` update.
 2. Create `convex/convex.config.ts`:
    ```ts
    import { defineApp } from 'convex/server';
@@ -67,3 +67,4 @@ Wire Stripe to Convex using @convex-dev/stripe: a checkout action, an httpAction
 - Stripe keys live in Convex env (use the `env` micro power): STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.
 - Gate on server-stored subscription state via isSubscribed query (reads component tables), not client claims.
 - convex/convex.config.ts must import from '@convex-dev/stripe/convex.config.js' (not .ts) — the .js extension is required by the Convex bundler.
+- Use Bun for installation and keep the committed `bun.lock` in sync.

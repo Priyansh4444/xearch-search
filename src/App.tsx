@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -36,6 +37,7 @@ import {
 } from "lucide-react";
 import { ConvexError } from "convex/values";
 import Dashboard from "./Dashboard";
+import { indexingUnavailableMessage } from "./integrationStatus";
 import { jobLabel, jobSummary, jobWarnings } from "./jobText";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
@@ -195,9 +197,7 @@ function PostCard({
         </button>
         <div className="post-meta">
           {hasValidDate ? (
-            <time dateTime={createdAt.toISOString()}>
-              {postDate.format(createdAt)}
-            </time>
+            <time dateTime={createdAt.toISOString()}>{postDate.format(createdAt)}</time>
           ) : null}
           <button
             className={`icon ${bookmarked ? "accent" : ""}`}
@@ -306,7 +306,7 @@ export default function App() {
       for (const resolve of authWaiters.current.splice(0)) resolve();
     }
   }, [isAuthenticated]);
-  const ensureSession = async () => {
+  const ensureSession = useCallback(async () => {
     if (authReady.current) return;
     session.current ??= (async () => {
       await signIn("anonymous");
@@ -327,7 +327,7 @@ export default function App() {
       session.current = null;
     });
     await session.current;
-  };
+  }, [signIn]);
   const accountResults = useQuery(api.search.accounts);
   const accounts = accountResults ?? [];
   const configured = useQuery(api.integrations.configured);
@@ -682,12 +682,12 @@ export default function App() {
                     : configured === undefined
                       ? "Checking your search service connection"
                       : !configured.search
-                      ? "Waiting for the search service connection"
-                      : result?.status === "complete"
-                        ? `${result.rows.length} posts on this page`
-                        : result?.status === "failed"
-                          ? "Search could not complete"
-                          : "Finding matching posts…"}
+                        ? "Waiting for the search service connection"
+                        : result?.status === "complete"
+                          ? `${result.rows.length} posts on this page`
+                          : result?.status === "failed"
+                            ? "Search could not complete"
+                            : "Finding matching posts…"}
                 </p>
               </div>
               {view === "search" && (
@@ -884,11 +884,8 @@ export default function App() {
               <Download size={16} />
               Import posts
             </button>
-            {!configured?.indexing && (
-              <p className="config-warning">
-                Indexing needs an x.md key and a raw-capture receiver. Configure both in
-                Connections.
-              </p>
+            {configured && !configured.indexing && (
+              <p className="config-warning">{indexingUnavailableMessage(configured)}</p>
             )}
           </form>
           <div className="jobs">
