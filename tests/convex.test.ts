@@ -23,6 +23,87 @@ async function setup() {
   };
 }
 describe("Convex application boundaries", () => {
+  it("publishes Effect-decoded search results through the existing service contract", async () => {
+    const { t, a, b, alice } = await setup();
+    vi.stubEnv("SEARCH_API_URL", "https://search.example/query");
+    vi.stubEnv("SEARCH_SERVICE_TOKEN", "test-search-token");
+    const post = {
+      tweetId: "123",
+      author: "example",
+      text: "convex",
+      url: "https://x.com/example/status/123",
+      links: [],
+    };
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        rows: [{ ...post, internalOnly: true }],
+        nextCursor: "next",
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const sessionId = await t.run((ctx) =>
+      ctx.db.insert("sessions", {
+        owner: alice,
+        raw: "@example convex",
+        sort: "newest",
+        status: "queued",
+        rows: [],
+        warnings: [],
+      }),
+    );
+    await t.action(internal.search.execute, { sessionId });
+    expect(fetcher).toHaveBeenCalledOnce();
+    const init = fetcher.mock.calls[0][1];
+    expect(JSON.parse(init?.body as string)).toEqual({
+      version: 1,
+      query: "convex",
+      author: "example",
+      sort: "newest",
+      limit: 20,
+    });
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer test-search-token");
+    expect(await a.query(api.search.results, { sessionId })).toMatchObject({
+      status: "complete",
+      rows: [post],
+      warnings: [],
+      nextCursor: "next",
+    });
+    await expect(b.query(api.search.results, { sessionId })).rejects.toThrow("not found");
+  });
+  it("fails search safely when the service exceeds the Effect page limit", async () => {
+    const { t, a, alice } = await setup();
+    vi.stubEnv("SEARCH_API_URL", "https://search.example/query");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () =>
+        Response.json({
+          rows: Array(21).fill({
+            tweetId: "123",
+            author: "example",
+            text: "convex",
+            url: "https://x.com/example/status/123",
+            links: [],
+          }),
+        }),
+      ),
+    );
+    const sessionId = await t.run((ctx) =>
+      ctx.db.insert("sessions", {
+        owner: alice,
+        raw: "convex",
+        sort: "relevance",
+        status: "queued",
+        rows: [],
+        warnings: [],
+      }),
+    );
+    await t.action(internal.search.execute, { sessionId });
+    expect(await a.query(api.search.results, { sessionId })).toMatchObject({
+      status: "failed",
+      rows: [],
+      error: expect.stringContaining("valid result page"),
+    });
+  });
   it("rejects an unauthorized production worker", async () => {
     const { t } = await setup();
     vi.stubEnv("COLLECTOR_MODE", "outbound");
@@ -30,9 +111,7 @@ describe("Convex application boundaries", () => {
     await expect(t.action(api.worker.poll, { token: "wrong" })).rejects.toThrow(
       "authentication failed",
     );
-    expect(await t.run((ctx) => ctx.db.query("collector").collect())).toEqual(
-      [],
-    );
+    expect(await t.run((ctx) => ctx.db.query("collector").collect())).toEqual([]);
   });
   it("leases only one due job to the outbound worker", async () => {
     const { t, alice } = await setup();
@@ -62,9 +141,7 @@ describe("Convex application boundaries", () => {
       token: "test-worker-secret",
     });
     expect(first?._id).toBe(ids[1]);
-    expect(
-      await t.action(api.worker.poll, { token: "test-worker-secret" }),
-    ).toBeNull();
+    expect(await t.action(api.worker.poll, { token: "test-worker-secret" })).toBeNull();
     expect((await t.run((ctx) => ctx.db.get(ids[0])))?.status).toBe("queued");
   });
   it("shows offline workers as unavailable and disables new imports", async () => {
@@ -77,9 +154,9 @@ describe("Convex application boundaries", () => {
       indexing: false,
       collectorMode: "outbound",
     });
-    await expect(
-      a.mutation(api.jobs.start, { kind: "profile", input: "theo" }),
-    ).rejects.toThrow("worker is offline");
+    await expect(a.mutation(api.jobs.start, { kind: "profile", input: "theo" })).rejects.toThrow(
+      "worker is offline",
+    );
     await t.mutation(internal.worker.heartbeat, { online: true });
     expect(await a.query(api.integrations.configured, {})).toMatchObject({
       handoff: true,
@@ -143,7 +220,7 @@ describe("Convex application boundaries", () => {
       pageAttempt: 0,
     });
     expect(await t.mutation(internal.jobs.claim, { jobId })).toBeNull();
-    await t.run(ctx => ctx.db.patch(jobId, { readyAt: 0 }));
+    await t.run((ctx) => ctx.db.patch(jobId, { readyAt: 0 }));
     await t.mutation(internal.jobs.claim, { jobId });
     await t.mutation(internal.jobs.finish, {
       jobId,
@@ -221,9 +298,7 @@ describe("Convex application boundaries", () => {
       postsReceived: 500,
       nextUntil: "2026-06-01",
     });
-    expect((await t.run((ctx) => ctx.db.get(jobId)))?.error).toContain(
-      "import limit",
-    );
+    expect((await t.run((ctx) => ctx.db.get(jobId)))?.error).toContain("import limit");
   });
   it("owns cancellation and rejects progress from a stopped worker", async () => {
     const { t, a, b, alice } = await setup();
@@ -240,12 +315,8 @@ describe("Convex application boundaries", () => {
         updatedAt: Date.now(),
       }),
     );
-    await expect(b.mutation(api.jobs.cancel, { jobId })).rejects.toThrow(
-      "Job not found",
-    );
-    await expect(b.query(api.jobs.receipts, { jobId })).rejects.toThrow(
-      "Job not found",
-    );
+    await expect(b.mutation(api.jobs.cancel, { jobId })).rejects.toThrow("Job not found");
+    await expect(b.query(api.jobs.receipts, { jobId })).rejects.toThrow("Job not found");
     await a.mutation(api.jobs.cancel, { jobId });
     await expect(
       t.mutation(internal.jobs.progress, {
@@ -266,9 +337,9 @@ describe("Convex application boundaries", () => {
     const rows = await a.query(api.search.saved, {});
     expect(rows).toHaveLength(1);
     expect(await b.query(api.search.saved, {})).toEqual([]);
-    await expect(
-      b.mutation(api.search.removeSaved, { id: rows[0]._id }),
-    ).rejects.toThrow("Search not found");
+    await expect(b.mutation(api.search.removeSaved, { id: rows[0]._id })).rejects.toThrow(
+      "Search not found",
+    );
   });
   it("will not expose search results or bookmark another user's session", async () => {
     const { t, alice, b } = await setup();
@@ -293,9 +364,9 @@ describe("Convex application boundaries", () => {
     await expect(b.query(api.search.results, { sessionId })).rejects.toThrow(
       "Search session not found",
     );
-    await expect(
-      b.mutation(api.search.bookmark, { sessionId, tweetId: "123" }),
-    ).rejects.toThrow("Post not found");
+    await expect(b.mutation(api.search.bookmark, { sessionId, tweetId: "123" })).rejects.toThrow(
+      "Post not found",
+    );
   });
   it("advances indexing progress once per receipt and refuses stale workers", async () => {
     const { t, alice } = await setup();
@@ -321,31 +392,27 @@ describe("Convex application boundaries", () => {
     };
     await t.mutation(internal.jobs.ack, ack);
     await t.mutation(internal.jobs.ack, ack);
-    expect(await t.run(async (ctx) => (await ctx.db.get(jobId))!.count)).toBe(
-      25,
+    expect(await t.run(async (ctx) => (await ctx.db.get(jobId))!.count)).toBe(25);
+    await expect(t.mutation(internal.jobs.ack, { ...ack, attempt: 2 })).rejects.toThrow(
+      "no longer active",
     );
-    await expect(
-      t.mutation(internal.jobs.ack, { ...ack, attempt: 2 }),
-    ).rejects.toThrow("no longer active");
     await t.mutation(internal.jobs.expire, { jobId, attempt: 1 });
-    expect(await t.run(async (ctx) => (await ctx.db.get(jobId))!.status)).toBe(
-      "partial",
-    );
+    expect(await t.run(async (ctx) => (await ctx.db.get(jobId))!.status)).toBe("partial");
   });
   it("gates collection on both the x.md credential and downstream receiver", async () => {
     const { a } = await setup();
     vi.stubEnv("X_MD_API_KEY", "test");
     vi.stubEnv("RAW_CAPTURE_URL", "");
-    await expect(
-      a.mutation(api.jobs.start, { kind: "bulk", input: "theo" }),
-    ).rejects.toThrow("raw-capture receiver");
+    await expect(a.mutation(api.jobs.start, { kind: "bulk", input: "theo" })).rejects.toThrow(
+      "raw-capture receiver",
+    );
   });
   it("reads the Firecrawl component's unwrapped document and caches the UI preview", async () => {
     const { t, a } = await setup();
     firecrawlTest.register(t);
     vi.stubEnv("FIRECRAWL_API_KEY", "fc-test");
     vi.stubEnv("RAW_CAPTURE_URL", "");
-    const fetcher = vi.fn(async () =>
+    const fetcher = vi.fn<typeof fetch>(async () =>
       Response.json({
         success: true,
         data: {
@@ -372,7 +439,7 @@ describe("Convex application boundaries", () => {
   });
   it("rejects unauthenticated paid actions before calling a provider", async () => {
     const { t } = await setup();
-    const fetcher = vi.fn();
+    const fetcher = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetcher);
     await expect(
       t.action(api.integrations.readLink, { url: "https://example.com" }),
@@ -384,7 +451,7 @@ describe("Convex application boundaries", () => {
     firecrawlTest.register(t);
     vi.stubEnv("FIRECRAWL_API_KEY", "fc-test");
     vi.stubEnv("RAW_CAPTURE_URL", "");
-    const fetcher = vi.fn(async () =>
+    const fetcher = vi.fn<typeof fetch>(async () =>
       Response.json({
         success: true,
         data: {
@@ -414,7 +481,7 @@ describe("Convex application boundaries", () => {
     vi.stubEnv("OPENAI_API_KEY", "test-key");
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
+      vi.fn<typeof fetch>(async () =>
         Response.json({
           output: [
             {
@@ -444,7 +511,7 @@ describe("Convex application boundaries", () => {
     vi.stubEnv("OPENAI_API_KEY", "test-key");
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
+      vi.fn<typeof fetch>(async () =>
         Response.json({
           output: [
             {
@@ -463,17 +530,17 @@ describe("Convex application boundaries", () => {
         }),
       ),
     );
-    await expect(
-      a.action(api.integrations.interpret, { raw: "@theo convex" }),
-    ).rejects.toThrow("different author");
+    await expect(a.action(api.integrations.interpret, { raw: "@theo convex" })).rejects.toThrow(
+      "different author",
+    );
   });
   it("rejects unsupported hard filters before an OpenAI request", async () => {
     const { a } = await setup();
-    const fetcher = vi.fn();
+    const fetcher = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetcher);
-    await expect(
-      a.action(api.integrations.interpret, { raw: "convex -is:reply" }),
-    ).rejects.toThrow("operators");
+    await expect(a.action(api.integrations.interpret, { raw: "convex -is:reply" })).rejects.toThrow(
+      "operators",
+    );
     expect(fetcher).not.toHaveBeenCalled();
   });
 });

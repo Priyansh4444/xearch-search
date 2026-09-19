@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -49,9 +50,8 @@ const sorts: { value: Sort; label: string }[] = [
 ];
 const fromLocation = () => ({
   raw: new URLSearchParams(location.search).get("q") ?? "",
-  sort: (sorts.find(
-    (s) => s.value === new URLSearchParams(location.search).get("sort"),
-  )?.value ?? "relevance") as Sort,
+  sort: (sorts.find((s) => s.value === new URLSearchParams(location.search).get("sort"))?.value ??
+    "relevance") as Sort,
 });
 const compact = (n: number) =>
   Intl.NumberFormat("en", {
@@ -120,11 +120,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
   if (!words.length) return <>{text}</>;
   const pattern = new RegExp(`(${words.join("|")})`, "gi");
   return (
-    <>
-      {text
-        .split(pattern)
-        .map((piece, i) => (i % 2 ? <mark key={i}>{piece}</mark> : piece))}
-    </>
+    <>{text.split(pattern).map((piece, i) => (i % 2 ? <mark key={i}>{piece}</mark> : piece))}</>
   );
 }
 function PostCard({
@@ -176,11 +172,7 @@ function PostCard({
       </header>
       <p className="post-text">
         <Highlight
-          text={
-            !expanded && post.text.length > 700
-              ? `${post.text.slice(0, 700)}…`
-              : post.text
-          }
+          text={!expanded && post.text.length > 700 ? `${post.text.slice(0, 700)}…` : post.text}
           query={query}
         />
       </p>
@@ -239,9 +231,7 @@ export default function App() {
     [searchRun, setSearchRun] = useState(0);
   const [sessionId, setSessionId] = useState<Id<"sessions"> | null>(null);
   const [view, setView] = useState<"search" | "bookmarks">("search"),
-    [modal, setModal] = useState<
-      "imports" | "saved" | "email" | "setup" | null
-    >(null);
+    [modal, setModal] = useState<"imports" | "saved" | "email" | "setup" | null>(null);
   const [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
     [accountInput, setAccountInput] = useState(""),
@@ -269,14 +259,14 @@ export default function App() {
   const connection = useConvexConnectionState();
   const session = useRef<Promise<unknown> | null>(null);
   const authReady = useRef(isAuthenticated);
-  authReady.current = isAuthenticated;
   const authWaiters = useRef<(() => void)[]>([]);
   useEffect(() => {
+    authReady.current = isAuthenticated;
     if (isAuthenticated) {
       for (const resolve of authWaiters.current.splice(0)) resolve();
     }
   }, [isAuthenticated]);
-  const ensureSession = async () => {
+  const ensureSession = useCallback(async () => {
     if (authReady.current) return;
     session.current ??= (async () => {
       await signIn("anonymous");
@@ -288,9 +278,7 @@ export default function App() {
             resolve();
           };
           const timer = setTimeout(() => {
-            authWaiters.current = authWaiters.current.filter(
-              (fn) => fn !== done,
-            );
+            authWaiters.current = authWaiters.current.filter((fn) => fn !== done);
             reject(new Error("Session connection timed out. Try again."));
           }, 20_000);
           authWaiters.current.push(done);
@@ -299,7 +287,7 @@ export default function App() {
       session.current = null;
     });
     await session.current;
-  };
+  }, [signIn]);
   const accounts = useQuery(api.search.accounts) ?? [];
   const configured = useQuery(api.integrations.configured);
   let queryError = "";
@@ -312,14 +300,11 @@ export default function App() {
     api.search.results,
     sessionId && isAuthenticated ? { sessionId } : "skip",
   );
-  const result =
-    snapshot?.raw === raw && snapshot.sort === sort ? snapshot : undefined;
+  const result = snapshot?.raw === raw && snapshot.sort === sort ? snapshot : undefined;
   const jobs = useQuery(api.jobs.list, isAuthenticated ? {} : "skip") ?? [];
   const saved = useQuery(api.search.saved, isAuthenticated ? {} : "skip") ?? [];
-  const bookmarks =
-    useQuery(api.search.bookmarks, isAuthenticated ? {} : "skip") ?? [];
-  const deliveries =
-    useQuery(api.email.deliveries, isAuthenticated ? {} : "skip") ?? [];
+  const bookmarks = useQuery(api.search.bookmarks, isAuthenticated ? {} : "skip") ?? [];
+  const deliveries = useQuery(api.email.deliveries, isAuthenticated ? {} : "skip") ?? [];
   const startSearch = useMutation(api.search.start);
   const start = useMutation(api.jobs.start),
     bookmark = useMutation(api.search.bookmark),
@@ -329,7 +314,7 @@ export default function App() {
   const webContext = useAction(api.integrations.webContext);
   const readLink = useAction(api.integrations.readLink),
     interpret = useAction(api.integrations.interpret);
-  const task = async (fn: () => Promise<unknown>, success?: string) => {
+  const task = useCallback(async (fn: () => Promise<unknown>, success?: string) => {
     setNotice("");
     setBusy(true);
     try {
@@ -348,7 +333,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
   const search = (query: string, nextSort: Sort = sort) => {
     setRaw(query.trim());
     setDraft(query.trim());
@@ -379,6 +364,8 @@ export default function App() {
   useEffect(() => {
     if (!raw.trim() || queryError || !configured?.search) return;
     let active = true;
+    // This effect starts an external search; task owns its loading/error state.
+    // oxlint-disable-next-line react/set-state-in-effect
     void task(async () => {
       await ensureSession();
       const id = await startSearch({ raw, sort });
@@ -387,7 +374,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [raw, sort, searchRun, configured?.search]);
+  }, [raw, sort, searchRun, configured?.search, queryError, ensureSession, startSearch, task]);
   const importAccount = (e: FormEvent) => {
     e.preventDefault();
     void task(async () => {
@@ -434,11 +421,7 @@ export default function App() {
   return (
     <div className={`app ${home ? "is-home" : "has-results"}`}>
       <header className="topbar">
-        <button
-          className="wordmark"
-          onClick={() => search("")}
-          aria-label="Xearch home"
-        >
+        <button className="wordmark" onClick={() => search("")} aria-label="Xearch home">
           xearch<span className="wordmark-dot">.</span>
         </button>
         <nav aria-label="Main navigation">
@@ -464,9 +447,7 @@ export default function App() {
           <button
             aria-label="Bookmarks"
             aria-pressed={view === "bookmarks"}
-            onClick={() =>
-              setView(view === "bookmarks" ? "search" : "bookmarks")
-            }
+            onClick={() => setView(view === "bookmarks" ? "search" : "bookmarks")}
           >
             <Bookmark size={15} />
             <span>Bookmarks</span>
@@ -565,8 +546,7 @@ export default function App() {
             </div>
             <div className="search-help">
               <span>
-                Search everything, select a creator, or start with <b>@</b> to
-                filter by account.
+                Search everything, select a creator, or start with <b>@</b> to filter by account.
               </span>
               <button
                 type="button"
@@ -617,10 +597,7 @@ export default function App() {
                 <>
                   <span className="status-dot muted" />
                   Connect your sources to start searching.
-                  <button
-                    className="text-button"
-                    onClick={() => setModal("imports")}
-                  >
+                  <button className="text-button" onClick={() => setModal("imports")}>
                     Add one <Plus size={13} />
                   </button>
                 </>
@@ -631,11 +608,7 @@ export default function App() {
         {notice && (
           <div className="notice" role="status">
             <span>{notice}</span>
-            <button
-              className="icon"
-              aria-label="Dismiss message"
-              onClick={() => setNotice("")}
-            >
+            <button className="icon" aria-label="Dismiss message" onClick={() => setNotice("")}>
               <X size={16} />
             </button>
           </div>
@@ -697,10 +670,7 @@ export default function App() {
                     <Mail size={15} />
                     Email
                   </button>
-                  <button
-                    disabled={busy || !configured?.indexing}
-                    onClick={() => void loadLive()}
-                  >
+                  <button disabled={busy || !configured?.indexing} onClick={() => void loadLive()}>
                     <Search size={15} />
                     Find on X
                   </button>
@@ -717,23 +687,17 @@ export default function App() {
                 <Search size={30} />
                 <h2>Connect the search service.</h2>
                 <p>
-                  The interface is ready. Your data service supplies the corpus
-                  and search results.
+                  The interface is ready. Your data service supplies the corpus and search results.
                 </p>
-                <button onClick={() => setModal("setup")}>
-                  View connections
-                </button>
+                <button onClick={() => setModal("setup")}>View connections</button>
               </div>
             ) : result?.status === "failed" ? (
               <div className="empty">
                 <h2>Search could not complete</h2>
                 <p>{result.error}</p>
-                <button onClick={() => setSearchRun((n) => n + 1)}>
-                  Retry search
-                </button>
+                <button onClick={() => setSearchRun((n) => n + 1)}>Retry search</button>
               </div>
-            ) : view === "search" &&
-              (!result || result.status !== "complete") ? (
+            ) : view === "search" && (!result || result.status !== "complete") ? (
               <div className="empty" role="status">
                 Finding matching posts…
               </div>
@@ -760,8 +724,8 @@ export default function App() {
             ) : (
               <>
                 <p className="scope-note">
-                  Results and ordering come from your search service. Engagement
-                  reflects the source snapshot.
+                  Results and ordering come from your search service. Engagement reflects the source
+                  snapshot.
                 </p>
                 {result?.warnings.map((warning, i) => (
                   <p className="scope-note" key={i}>
@@ -774,9 +738,7 @@ export default function App() {
                       key={post.tweetId}
                       post={post}
                       query={raw}
-                      bookmarked={bookmarks.some(
-                        (b) => b.tweetId === post.tweetId,
-                      )}
+                      bookmarked={bookmarks.some((b) => b.tweetId === post.tweetId)}
                       onAuthor={() => search(`@${post.author}`)}
                       onBookmark={() =>
                         void task(async () => {
@@ -835,15 +797,10 @@ export default function App() {
         </div>
       </footer>
       {modal === "imports" && (
-        <Modal
-          notice={notice}
-          title="Import an account"
-          close={() => setModal(null)}
-        >
+        <Modal notice={notice} title="Import an account" close={() => setModal(null)}>
           <p className="muted-copy">
-            Collect an account’s public history through x.md. Raw captures go to
-            your data service for normalization and storage; this app tracks the
-            handoff.
+            Collect an account’s public history through x.md. Raw captures go to your data service
+            for normalization and storage; this app tracks the handoff.
           </p>
           <form className="stack-form" onSubmit={importAccount}>
             <label htmlFor="account">X handle</label>
@@ -864,36 +821,27 @@ export default function App() {
               value={since}
               onChange={(e) => setSince(e.target.value)}
             />
-            <button
-              className="primary"
-              disabled={busy || !configured?.indexing}
-            >
+            <button className="primary" disabled={busy || !configured?.indexing}>
               <Download size={16} />
               Import posts
             </button>
             {!configured?.indexing && (
               <p className="config-warning">
-                Indexing needs an x.md key and a raw-capture receiver. Configure
-                both in Connections.
+                Indexing needs an x.md key and a raw-capture receiver. Configure both in
+                Connections.
               </p>
             )}
           </form>
           <div className="jobs">
             <h3>Recent imports</h3>
             {!jobs.length && (
-              <p className="muted-copy">
-                Your imports and their progress will appear here.
-              </p>
+              <p className="muted-copy">Your imports and their progress will appear here.</p>
             )}
             {jobs.map((job) => (
               <div className="job" key={job._id}>
                 <div>
-                  <strong>
-                    {job.kind === "bulk" ? `@${job.input}` : job.input}
-                  </strong>
-                  <span className={`job-status ${job.status}`}>
-                    {jobLabel(job)}
-                  </span>
+                  <strong>{job.kind === "bulk" ? `@${job.input}` : job.input}</strong>
+                  <span className={`job-status ${job.status}`}>{jobLabel(job)}</span>
                 </div>
                 <p>{jobSummary(job)}</p>
                 {job.error && <p className="config-warning">{job.error}</p>}
@@ -936,9 +884,7 @@ export default function App() {
       )}
       {modal === "saved" && (
         <Modal title="Saved searches" close={() => setModal(null)}>
-          <p className="muted-copy">
-            Saved privately to this browser's guest session.
-          </p>
+          <p className="muted-copy">Saved privately to this browser's guest session.</p>
           {!saved.length && (
             <div className="empty small">
               <Clock3 size={26} />
@@ -968,14 +914,10 @@ export default function App() {
         </Modal>
       )}
       {modal === "email" && (
-        <Modal
-          notice={notice}
-          title="Email these results"
-          close={() => setModal(null)}
-        >
+        <Modal notice={notice} title="Email these results" close={() => setModal(null)}>
           <p className="muted-copy">
-            Send the first 10 matches for “{raw}”, with original post links.
-            Sending happens only when you press the button below.
+            Send the first 10 matches for “{raw}”, with original post links. Sending happens only
+            when you press the button below.
           </p>
           <form
             className="stack-form"
@@ -1009,8 +951,7 @@ export default function App() {
       {modal === "setup" && (
         <Modal title="Connections" close={() => setModal(null)}>
           <p className="muted-copy">
-            Keys are configured on the backend and are never included in the
-            browser.
+            Keys are configured on the backend and are never included in the browser.
           </p>
           {[
             {
@@ -1069,17 +1010,16 @@ export default function App() {
             </div>
           ))}
           <p className="muted-copy">
-            For local setup: <code>bunx convex env set NAME</code> prompts for
-            the value. Webhook setup and production instructions are in the
-            README.
+            For local setup: <code>bunx convex env set NAME</code> prompts for the value. Webhook
+            setup and production instructions are in the README.
           </p>
         </Modal>
       )}
       {contextPages && (
         <Modal title="Web context" close={() => setContextPages(null)}>
           <p className="muted-copy">
-            Related pages found and read by Firecrawl. These are web results,
-            separate from the X corpus.
+            Related pages found and read by Firecrawl. These are web results, separate from the X
+            corpus.
           </p>
           {contextPages.length === 0 ? (
             <p>No related pages returned.</p>
@@ -1107,16 +1047,10 @@ export default function App() {
       {page && (
         <Modal title={page.title} close={() => setPage(null)}>
           <p className="muted-copy">
-            Collected {new Date(page.collectedAt).toLocaleString()}. This is a
-            current-source preview, not an archive of the page when the post was
-            written.
+            Collected {new Date(page.collectedAt).toLocaleString()}. This is a current-source
+            preview, not an archive of the page when the post was written.
           </p>
-          <a
-            className="source-link"
-            href={page.url}
-            target="_blank"
-            rel="noreferrer"
-          >
+          <a className="source-link" href={page.url} target="_blank" rel="noreferrer">
             Open original <ExternalLink size={14} />
           </a>
           <p className="page-text">{page.text}</p>

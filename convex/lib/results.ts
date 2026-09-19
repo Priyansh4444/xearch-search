@@ -1,24 +1,43 @@
-import { z } from "zod";
-const safeLink = z
-  .string()
-  .url()
-  .refine((value) => new URL(value).protocol === "https:", "Expected HTTPS");
-export const resultPost = z.object({
-  tweetId: z.string().regex(/^\d+$/),
-  author: z.string().regex(/^[A-Za-z0-9_]{1,15}$/),
-  text: z.string().max(6000),
+import * as Schema from "effect/Schema";
+
+const safeLink = Schema.String.check(
+  Schema.makeFilter((value) => {
+    try {
+      return new URL(value).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }),
+);
+const metric = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
+
+/** Wire contract for the external indexer/search service, not a corpus model. */
+export const resultPost = Schema.Struct({
+  tweetId: Schema.String.check(Schema.isPattern(/^\d+$/)),
+  author: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_]{1,15}$/)),
+  text: Schema.String.check(Schema.isMaxLength(6000)),
   url: safeLink,
-  createdAt: z.number().optional(),
-  likes: z.number().nonnegative().optional(),
-  reposts: z.number().nonnegative().optional(),
-  replies: z.number().nonnegative().optional(),
-  links: z.array(safeLink).max(10),
-  avatar: safeLink.optional(),
-  displayName: z.string().max(100).optional(),
+  createdAt: Schema.optional(Schema.Finite),
+  likes: Schema.optional(metric),
+  reposts: Schema.optional(metric),
+  replies: Schema.optional(metric),
+  links: Schema.Array(safeLink).pipe(Schema.mutable).check(Schema.isMaxLength(10)),
+  avatar: Schema.optional(safeLink),
+  displayName: Schema.optional(Schema.String.check(Schema.isMaxLength(100))),
 });
-export type ResultPost = z.infer<typeof resultPost>;
-export const searchResponse = z.object({
-  rows: z.array(resultPost).max(20),
-  nextCursor: z.string().max(4000).optional(),
-  warnings: z.array(z.string().max(500)).max(10).default([]),
+export type ResultPost = typeof resultPost.Type;
+export const searchResponse = Schema.Struct({
+  rows: Schema.Array(resultPost).pipe(Schema.mutable).check(Schema.isMaxLength(20)),
+  nextCursor: Schema.optional(Schema.String.check(Schema.isMaxLength(4000))),
+  warnings: Schema.optional(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(500)))
+      .pipe(Schema.mutable)
+      .check(Schema.isMaxLength(10)),
+  ),
 });
+
+const decode = Schema.decodeUnknownSync(searchResponse);
+export function decodeSearchResponse(input: unknown) {
+  const result = decode(input);
+  return { ...result, warnings: result.warnings ?? [] };
+}

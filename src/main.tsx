@@ -5,11 +5,11 @@ import { Component, type ReactNode } from "react";
 import App from "./App";
 import "./style.css";
 class Boundary extends Component<{ children: ReactNode }, { error: boolean }> {
-  state = { error: false };
+  override state = { error: false };
   static getDerivedStateFromError() {
     return { error: true };
   }
-  render() {
+  override render() {
     return this.state.error ? (
       <main className="setup">
         <h1>Couldn't connect to Xearch.</h1>

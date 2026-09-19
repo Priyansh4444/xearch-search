@@ -1,5 +1,10 @@
 # Xearch
 
+Rewrite coordination: this is now the shared app repository. Prronsh owns the
+local indexer and Elasticsearch work; the application keeps Convex orchestration
+and provider integrations. See [rewrite foundations](docs/rewrite-foundations.md)
+for the imported lint rules, Effect validation, and integration boundaries.
+
 ## Local import dashboard
 
 Open `http://localhost:5173/?dashboard=1` for the live import controls. Start/stop/retry jobs, continue older pages, and inspect raw-capture receipts. All seven x.md collection tasks are available. Jobs are private to the current guest session; other tabs in that session update through Convex subscriptions.
